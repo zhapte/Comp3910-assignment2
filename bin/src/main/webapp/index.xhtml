@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:f="http://xmlns.jcp.org/jsf/core"
+      xmlns:h="http://xmlns.jcp.org/jsf/html">
+   <h:head>
+      <title>#{msgs.title}</title>
+   </h:head>
+   <h:body>
+      <h:form>
+         <h3>#{msgs.heading}</h3>
+         <p>
+            <h:outputFormat value="#{msgs.currentScore}">
+               <f:param value="#{quizBean.score}"/>
+            </h:outputFormat>
+         </p>
+         <p>#{msgs.guessNext}</p>
+         <p>#{quizBean.current.sequence}</p>
+         <p>
+            <h:outputLabel for="answer" value="#{msgs.answer}"/>
+            <h:inputText id="answer" value="#{quizBean.answer}"/>
+         </p>
+         <p><h:commandButton value="#{msgs.next}"/></p>
+      </h:form>
+   </h:body>
+</html>

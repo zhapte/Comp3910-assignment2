@@ -1,0 +1,128 @@
+/* reset + full-height */
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+
+/* header bar (yours may already exist) */
+.site-header {
+  background: #45454d; color: #fff; text-align: center;
+  padding: 12px 16px; /* not sticky; add position:sticky; top:0 if you want */
+}
+
+/* MAIN LAYOUT: grid with left sidebar */
+.app-grid {
+  display: grid;
+  grid-template-columns: 240px 1fr;   /* sidebar width | content grows */
+  min-height: calc(100vh - 56px);     /* approx header height; adjust if needed */
+}
+
+/* sidebar styles */
+.sidebar {
+  background: #303b82;  /* your blue */
+  color: #e5e7eb;
+  padding: 16px 0;
+}
+
+/* content area */
+.content {
+  padding: 16px 20px;
+  background: #fff;     /* or your page bg */
+}
+
+/* optional: table + links (demo) */
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
+.timesheet-section {
+  background-color: #D9D9D9;
+  padding: 1rem;
+  border-radius: 6px;
+}
+
+
+/* sidebar.xhtml styling */
+.side-nav{
+  display:flex;
+  flex-direction:column;
+  gap:.25rem;
+  background:#303b82;
+  color:#e5e7eb;
+  height:100%;
+  padding:1rem 0;
+}
+.nav-header{
+  font-size:0.9rem;
+  text-transform:uppercase;
+  letter-spacing:0.05em;
+  padding:0.75rem 1rem;
+  opacity:.8;
+}
+.nav-item{
+  padding:0.75rem 1rem;
+  cursor:pointer;
+}
+.nav-item:hover{
+  background:rgba(255,255,255,.08);
+}
+
+/* header.xhtml styling */
+.site-header {
+  background-color: #45454d;      
+  color: #fff;
+  text-align: center;
+  padding: 1rem 0;
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.company-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* --- login layout --- */
+.login-bg{
+  background:#00000000;
+  min-height:100vh; margin:0; display:flex; align-items:center; justify-content:center;
+}
+.login-wrap {
+  width: min(92vw, 760px);
+  padding: 20px;
+  min-height: 400px; 
+  background: #474C93;    
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-card{
+  width:520px; max-width:100%; margin:0 auto; background:#ddd;
+  padding:24px 32px 28px; border-radius:4px; box-shadow:0 2px 10px rgba(0,0,0,.25);
+}
+.login-title{ text-align:center; margin:0 0 18px; font-weight:600; }
+
+.form-row{ display:grid; grid-template-columns:120px 1fr; align-items:center; gap:12px; margin:.6rem 0; }
+.form-row input{ padding:.45rem .55rem; border:1px solid #c9c9c9; background:#fff; }
+
+.form-actions {
+  text-align: center;     
+  margin-top: 20px;
+}
+
+.btn-primary {
+  background: #303b82;     
+  color: #fff;
+  border: none;
+  width: 200px;            
+  height: 35px;            
+  font-size: 1rem;
+  border-radius: 8px;      
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.btn-primary:hover {
+  background: #3e4bb0;
+  transform: scale(1.03);
+}
+.link-muted{ display:inline-block; margin-top:.75rem; color:#303b82; }
+

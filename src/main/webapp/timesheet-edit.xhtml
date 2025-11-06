@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:h="jakarta.faces.html"
+      xmlns:f="jakarta.faces.core"
+      xmlns:ui="jakarta.faces.facelets">
+
+<ui:composition template="/templates/app.xhtml">
+  <f:metadata>
+    <f:viewAction action="#{loginBean.ensureLoggedIn}" />
+  </f:metadata>
+
+  <ui:define name="title">#{msgs.timesheetEditTitle}</ui:define>
+
+  <ui:define name="sidebar">
+    <ui:include src="/sections/sidebar.xhtml"/>
+  </ui:define>
+
+  <ui:define name="content">
+    <h:form id="editForm">
+      <h2>#{msgs.timesheetEditTitle}</h2>
+
+      <div style="margin-bottom:1rem; display:flex; flex-wrap:wrap; gap:1.25rem; align-items:center;">
+        <span><b>#{msgs.EmpNum}</b> #{timesheetEdit.empNumber}</span>
+        <span><b>#{msgs.Name}</b> #{timesheetEdit.employeeName}</span>
+
+        <ui:fragment rendered="#{not empty timesheetEdit.sheet}">
+          <span><b>#{msgs.weekEnding}</b>
+            <h:inputText value="#{timesheetEdit.sheet.endDate}">
+              <f:convertDateTime type="localDate" pattern="yyyy-MM-dd"/>
+            </h:inputText>
+          </span>
+        </ui:fragment>
+
+        <span><b>Week #:</b> #{timesheetEdit.weekNumber}</span>
+      </div>
+
+      <h:messages globalOnly="true" style="color: red; margin-bottom: 1em;" />
+
+      <!-- Simple full-postback table -->
+      <table class="table" style="width:100%; border-collapse:collapse;" border="1" cellpadding="5">
+        <thead>
+          <tr style="background:#f3f3f3;">
+            <th style="text-align:left">#{msgs.project}</th>
+            <th style="text-align:left">#{msgs.wp}</th>
+            <th>#{msgs.total}</th>
+            <th>#{msgs.sat}</th><th>#{msgs.sun}</th><th>#{msgs.mon}</th>
+            <th>#{msgs.tue}</th><th>#{msgs.wed}</th><th>#{msgs.thu}</th><th>#{msgs.fri}</th>
+            <th style="text-align:left">#{msgs.notes}</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <ui:repeat value="#{timesheetEdit.rows}" var="r" varStatus="st">
+            <tr>
+              <td><h:inputText value="#{r.projectId}" style="width:6ch;"/></td>
+              <td><h:inputText value="#{r.workPackageId}" style="width:10ch;"/></td>
+
+              <td>
+                <h:outputText value="#{r.sum}">
+                  <f:convertNumber minFractionDigits="1" maxFractionDigits="1"/>
+                </h:outputText>
+              </td>
+
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][0]}" style="width:5ch; text-align:center;"/></td>
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][1]}" style="width:5ch; text-align:center;"/></td>
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][2]}" style="width:5ch; text-align:center;"/></td>
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][3]}" style="width:5ch; text-align:center;"/></td>
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][4]}" style="width:5ch; text-align:center;"/></td>
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][5]}" style="width:5ch; text-align:center;"/></td>
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][6]}" style="width:5ch; text-align:center;"/></td>
+
+              <td><h:inputText value="#{timesheetEdit.notesGrid[st.index]}" style="width:100%;"/></td>
+            </tr>
+          </ui:repeat>
+
+          <!-- Totals row -->
+          <tr style="font-weight:bold; background:#fafafa;">
+            <td>#{msgs.total}</td><td></td>
+            <td><h:outputText value="#{timesheetEdit.sheet.totalHours}"/></td>
+            <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[0]}"/></td>
+            <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[1]}"/></td>
+            <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[2]}"/></td>
+            <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[3]}"/></td>
+            <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[4]}"/></td>
+            <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[5]}"/></td>
+            <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[6]}"/></td>
+            <td></td>
+          </tr>
+
+          <!-- Add Row button (no AJAX) -->
+          <tr>
+            <td colspan="11" style="text-align:center; padding:0.75rem;">
+              <h:commandButton
+                value="+ Add Row"
+                action="#{timesheetEdit.addRow}"
+                style="padding:0.4rem 1rem; border:none; background:#4786A8; color:white; border-radius:6px; cursor:pointer;"/>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <br/>
+
+      <h:commandButton value="Save" action="#{timesheetEdit.save}"
+                       styleClass="btn btn-primary"/>
+    </h:form>
+  </ui:define>
+</ui:composition>
+</html>

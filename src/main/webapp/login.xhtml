@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:h="jakarta.faces.html">
+<h:head>
+  <title>Login</title>
+  
+  <h:outputStylesheet library="css" name="style.css"/>
+</h:head>
+
+<h:body class="login-bg">
+  <div class="login-wrap">
+    <div class="login-card">
+      <h2 class="login-title">#{msgs.login}</h2>
+
+      
+      <h:form id="loginForm">
+
+        <h:messages globalOnly="true" style="color: red; margin-bottom: 1em;" />
+
+        <div class="form-row">
+          <label for="user">#{msgs.Username}</label>
+          <h:inputText id="user"
+                       value="#{loginBean.cred.userName}"
+                       required="true"
+                       requiredMessage="Username is required." />
+        </div>
+
+        <div class="form-row">
+          <label for="pw">#{msgs.password}</label>
+          <h:inputSecret id="pw"
+                         value="#{loginBean.cred.password}"
+                         required="true"
+                         requiredMessage="Password is required." />
+        </div>
+
+        <div class="form-actions">
+          <h:commandButton value="Sign in"
+                           action="#{loginBean.login}"
+                           styleClass="btn-primary" />
+		</div>
+
+      </h:form>
+    </div>
+  </div>
+</h:body>
+</html>

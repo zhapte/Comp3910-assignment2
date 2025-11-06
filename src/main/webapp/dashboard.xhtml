@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:h="jakarta.faces.html"
+      xmlns:ui="jakarta.faces.facelets"
+      xmlns:f="jakarta.faces.core">
+
+<ui:composition template="/templates/app.xhtml">
+  <ui:define name="title">#{msgs.dashboardTitle}</ui:define>
+
+  <ui:define name="sidebar">
+    <ui:include src="/sections/sidebar.xhtml"/>
+  </ui:define>
+
+  <ui:define name="content">
+    <f:metadata>
+      <f:viewAction action="#{loginBean.ensureLoggedIn}" />
+    </f:metadata>
+
+    <!-- Table alignment styles -->
+    <style>
+      #tsTable { width:100%; table-layout:fixed; border-collapse:collapse; }
+      #tsTable th, #tsTable td { text-align:center; }
+      #tsTable th.week, #tsTable td.week { text-align:left; }    /* date column left for readability */
+      #tsTable td.actions { display:flex; gap:.5rem; justify-content:center; align-items:center; }
+    </style>
+
+    <h1>#{msgs.dashboardWelcome} #{currentUser.employee.name}!</h1>
+
+    <section>
+      <h2 class="section-title">#{msgs.dashboardSectionTitle}</h2>
+
+      <h:messages globalOnly="true" style="margin-bottom:1rem; color:#c00" />
+
+      <h:form id="tsListForm">
+        <section class="timesheet-section">
+          <table id="tsTable" class="table" role="grid">
+            <!-- lock column widths to keep header/body lined up -->
+            <colgroup>
+              <col style="width:40%;" /> <!-- Week Ending -->
+              <col style="width:20%;" /> <!-- Gross Hours -->
+              <col style="width:40%;" /> <!-- Actions -->
+            </colgroup>
+
+            <thead>
+              <tr>
+                <th class="week" scope="col">#{msgs.dashboardTableHeader1}</th>
+                <th scope="col">#{msgs.dashboardTableHeader2}</th>
+                <th scope="col">#{msgs.dashboardTableHeader3}</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <ui:fragment rendered="#{empty timesheetListBean.myTimesheets}">
+                <tr>
+                  <td colspan="3">
+                    <em>#{msgs.dashboardNoTimesheets}</em>
+                  </td>
+                </tr>
+              </ui:fragment>
+
+              <ui:repeat value="#{timesheetListBean.myTimesheets}" var="ts">
+                <tr>
+                  <td class="week">
+                    <h:outputText value="#{ts.weekEnding}">
+                      <!-- weekEnding is a String on your Timesheet; if you switch to LocalDate, add a converter -->
+                    </h:outputText>
+                  </td>
+                  <td>
+                    <h:outputText value="#{ts.totalHours}">
+                      <f:convertNumber minFractionDigits="1" maxFractionDigits="1"/>
+                    </h:outputText>
+                  </td>
+                  <td class="actions">
+                    <h:commandButton value="View"
+                                     action="#{timesheetListBean.viewTimesheet(ts)}"
+                                     styleClass="btn btn-primary" />
+                  </td>
+                </tr>
+              </ui:repeat>
+            </tbody>
+          </table>
+        </section>
+      </h:form>
+    </section>
+  </ui:define>
+</ui:composition>
+</html>

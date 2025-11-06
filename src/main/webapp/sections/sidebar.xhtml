@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:h="jakarta.faces.html"
+      xmlns:ui="jakarta.faces.facelets"
+	  xmlns:f="jakarta.faces.core">
+<ui:fragment>
+  <nav class="side-nav">
+    <div class="nav-header">#{msgs.sidebarMenu}</div>
+    <h:form style="margin:0; padding:0;">
+        <div class="nav-item" style="position:relative;">
+            <h:commandLink
+                           action="#{navBean.dashBoard}"
+                           style="position:absolute; top:0; left:0; right:0; bottom:0;
+                           color:inherit; text-decoration:none;
+                           display:flex; align-items:center; justify-content:center;"
+                            />
+            Home
+        </div>
+    </h:form>
+	
+    <h:form style="margin:0; padding:0;">
+        <div class="nav-item" style="position:relative;">
+            <h:commandLink
+                           action="#{navBean.currentTimesheet}"
+                           style="position:absolute; top:0; left:0; right:0; bottom:0;
+                           color:inherit; text-decoration:none;
+                           display:flex; align-items:center; justify-content:center;"
+                            />
+            Current Time Sheet
+        </div>
+    </h:form>
+	
+	
+	<h:form style="margin:0; padding:0;">
+		<div class="nav-item" style="position:relative;">
+			<h:commandLink
+				action="#{navBean.newTimesheet}"
+				ajax="false"
+				style="position:absolute; top:0; left:0; right:0; bottom:0;
+					color:inherit; text-decoration:none;
+					display:flex; align-items:center; justify-content:center;"
+			/>
+			New Time Sheet
+		</div>
+	</h:form>
+	
+    <h:form style="margin:0; padding:0;">
+        <div class="nav-item" style="position:relative;">
+            <h:commandLink
+                           action="#{navBean.changePassword}"
+                           style="position:absolute; top:0; left:0; right:0; bottom:0;
+                           color:inherit; text-decoration:none;
+                           display:flex; align-items:center; justify-content:center;"
+                            />
+            Change Password
+        </div>
+    </h:form>
+	
+	<ui:fragment rendered="#{currentUser.admin}">
+      <h:form style="margin:0; padding:0;">
+        <div class="nav-item" style="position:relative;">
+          <h:commandLink
+            action="#{navBean.adminDashBoard}"
+            style="position:absolute; top:0; left:0; right:0; bottom:0;
+                   color:inherit; text-decoration:none;
+                   display:flex; align-items:center; justify-content:center;"
+             />
+          Admin Dashboard
+        </div>
+      </h:form>
+    </ui:fragment>
+	
+    <h:form style="margin:0; padding:0;">
+        <div class="nav-item" style="position:relative;">
+            <h:commandLink
+                           action="#{navBean.logout}"
+                           style="position:absolute; top:0; left:0; right:0; bottom:0;
+                           color:inherit; text-decoration:none;
+                           display:flex; align-items:center; justify-content:center;"
+                           immediate="true" />
+            Logout
+        </div>
+    </h:form>
+  </nav>
+</ui:fragment>
+</html>

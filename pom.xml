@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project 
+   xmlns="http://maven.apache.org/POM/4.0.0" 
+   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+   http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>ca.bcit.infosys</groupId>
+  <artifactId>Assignment-01</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+  <packaging>war</packaging>
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<maven.compiler.source>21</maven.compiler.source>
+		<maven.compiler.target>21</maven.compiler.target>
+		<version.maven.war.plugin>3.4.0</version.maven.war.plugin>
+		<version.wildfly.plugin>5.1.4.Final</version.wildfly.plugin>
+		<version.wildfly>37.0.1.Final</version.wildfly>
+        <jakarta.jakartaee-api.version>10.0.0</jakarta.jakartaee-api.version>
+	</properties>
+
+  <dependencies>
+     <dependency>
+        <groupId>jakarta.platform</groupId>
+        <artifactId>jakarta.jakartaee-api</artifactId>
+        <version>${jakarta.jakartaee-api.version}</version>
+        <scope>provided</scope>
+     </dependency>
+        
+    <dependency>
+      <groupId>org.primefaces</groupId>
+      <artifactId>primefaces</artifactId>
+      <version>13.0.8</version>
+      <classifier>jakarta</classifier>
+    </dependency>
+    
+    <dependency>
+		<groupId>ca.bcit.infosys</groupId>
+		<artifactId>timesheet</artifactId>
+		<version>2.0.0</version>
+	</dependency>
+  </dependencies>
+  
+  <repositories>
+  	<repository>
+		<id>gitlab-maven</id>
+		<url>https://gitlab.infoteach.ca/api/v4/projects/17/packages/maven</url>
+  	</repository>
+  </repositories>	
+
+   <build>
+    <finalName>Assignment-01</finalName>
+    <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-war-plugin</artifactId>
+                <version>${version.maven.war.plugin}</version>
+            </plugin>
+			<plugin>
+				<groupId>org.wildfly.plugins</groupId>
+				<artifactId>wildfly-maven-plugin</artifactId>
+				<version>${version.wildfly.plugin}</version>
+				<configuration>
+                    <discover-provisioning-info>
+                        <version>${version.wildfly}</version>
+                        <verbose>true</verbose>
+                        <context>cloud</context>
+                    </discover-provisioning-info>
+                    <galleon-options>
+                        <jboss-fork-embedded>true</jboss-fork-embedded>
+                    </galleon-options>
+                    <runtime-name>ROOT.war</runtime-name>
+				</configuration>
+				<executions>
+					<execution>
+						<goals>
+							<goal>package</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+    </plugins>
+  </build>
+ </project>

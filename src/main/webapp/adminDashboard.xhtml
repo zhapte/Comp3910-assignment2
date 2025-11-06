@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:h="jakarta.faces.html"
+      xmlns:f="jakarta.faces.core"
+      xmlns:ui="jakarta.faces.facelets">
+
+<ui:composition template="/templates/app.xhtml">
+  <ui:define name="title">Admin — Users</ui:define>
+
+  <f:metadata>
+    <f:viewAction action="#{loginBean.ensureLoggedIn}" />
+  </f:metadata>
+
+  <ui:define name="sidebar">
+    <ui:include src="/sections/sidebar.xhtml"/>
+  </ui:define>
+
+  <ui:define name="content">
+
+    <!-- Alignments fix -->
+    <style>
+      /* lock layout + consistent alignment */
+      #usersTable { width:100%; table-layout:fixed; border-collapse:collapse; }
+      #usersTable th, #usersTable td { text-align:center; }               /* center by default */
+      #usersTable th.name, #usersTable td.name,
+      #usersTable th.username, #usersTable td.username { text-align:left; } /* but text cols left */
+      #usersTable td.actions { display:flex; gap:.5rem; align-items:center; justify-content:center; flex-wrap:wrap; }
+    </style>
+
+    <h1>#{msgs.dashboardWelcome} #{currentUser.employee.name}!</h1>
+
+    <h:messages globalOnly="true" style="margin-bottom:1rem; color:#c00" />
+
+    <h2>#{msgs.adminDashboardSectionTitle1}</h2>
+
+    <!-- Users table -->
+    <h:form id="tblForm">
+      <table id="usersTable" class="table" role="grid">
+        <!-- Column width control -->
+        <colgroup>
+          <col style="width:28%;" />  <!-- Name -->
+          <col style="width:14%;" />  <!-- Emp # -->
+          <col style="width:24%;" />  <!-- Username -->
+          <col style="width:14%;" />  <!-- Role -->
+          <col style="width:20%;" />  <!-- Actions -->
+        </colgroup>
+
+        <thead>
+          <tr>
+            <th class="name">#{msgs.dashboardTableHeader1}</th>
+            <th>#{msgs.EmpNum}</th>
+            <th>#{msgs.Username}</th>
+            <th>#{msgs.adminDashboardRole}</th>
+            <th>#{msgs.dashboardTableHeader3}</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <ui:repeat value="#{adminUserBean.employees}" var="e">
+            <tr>
+              <td class="name"><h:outputText value="#{e.name}" /></td>
+              <td><h:outputText value="#{e.empNumber}" /></td>
+              <td class="username"><h:outputText value="#{e.userName}" /></td>
+              <td><h:outputText value="#{adminUserBean.getRole(e)}" /></td>
+
+              <td class="actions">
+                <h:commandButton value="Delete"
+                                 action="#{adminUserBean.deleteEmployee(e)}"
+                                 onclick="return confirm('Delete #{e.userName}?');"
+                                 styleClass="btn btn-primary" />
+
+                <h:commandButton value="Reset Password"
+                                 action="#{adminUserBean.resetPassword(e)}"
+                                 onclick="return confirm('Reset password for #{e.userName}?');"
+                                 styleClass="btn btn-primary" />
+              </td>
+            </tr>
+          </ui:repeat>
+        </tbody>
+      </table>
+    </h:form>
+
+    <h2 style="margin-top:2rem;">#{msgs.adminDashboardSectionTitle2}</h2>
+
+    <!-- Add new user form -->
+    <h:form id="addForm">
+      <div class="form-row">
+        <label>#{msgs.Name}</label>
+        <h:inputText value="#{adminUserBean.name}" required="true" />
+      </div>
+
+      <div class="form-row">
+        <label>#{msgs.EmpNum}</label>
+        <h:inputText value="#{adminUserBean.empNumber}" required="true" />
+      </div>
+
+      <div class="form-row">
+        <label>#{msgs.Username}</label>
+        <h:inputText value="#{adminUserBean.userName}" required="true" />
+      </div>
+
+      <div class="form-row">
+        <label>#{msgs.adminDashboardAdmin}</label>
+        <h:selectBooleanCheckbox value="#{adminUserBean.admin}" />
+      </div>
+
+      <div class="form-actions" style="margin-top:1rem; display:flex; gap:.5rem;">
+        <h:commandButton value="Add"
+                         action="#{adminUserBean.addEmployee}"
+                         styleClass="btn btn-primary" />
+      </div>
+    </h:form>
+
+  </ui:define>
+</ui:composition>
+</html>

@@ -1,0 +1,10 @@
+build:
+  uri: https://gitlab.infoteach.ca/bdlink/ch2-numberquiz.git
+  mode: s2i
+  ref: ee10
+  s2i:
+    version: latest
+    builderImage: quay.io/wildfly/wildfly-s2i-jdk17
+    runtimeImage: quay.io/wildfly/wildfly-runtime-jdk17
+deploy:
+  replicas: 1

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:h="jakarta.faces.html"
+      xmlns:f="jakarta.faces.core"
+      xmlns:ui="jakarta.faces.facelets">
+
+<ui:composition template="/templates/app.xhtml">
+  <f:metadata>
+    <f:viewAction action="#{loginBean.ensureLoggedIn}" />
+  </f:metadata>
+
+  <ui:define name="title">View Timesheet</ui:define>
+
+  <ui:define name="sidebar">
+    <ui:include src="/sections/sidebar.xhtml" />
+  </ui:define>
+
+  <ui:define name="content">
+    <h2>Timesheet Details</h2>
+
+    <div style="margin-bottom:1rem; display:flex; flex-wrap:wrap; gap:1.25rem;">
+      <span><b>E Number:</b> #{timesheetEdit.empNumber}</span>
+      <span><b>Name:</b> #{timesheetEdit.employeeName}</span>
+      <span><b>Week Ending:</b>
+        <h:outputText value="#{timesheetEdit.sheet.endDate}">
+          <f:convertDateTime type="localDate" pattern="yyyy-MM-dd"/>
+        </h:outputText>
+      </span>
+	  <span><b>Week #:</b> #{timesheetEdit.weekNumber}</span>
+    </div>
+
+    <!-- Main timesheet table -->
+    <table class="table" style="width:100%; border-collapse:collapse" border="1" cellpadding="5">
+      <thead>
+        <tr style="background:#f3f3f3;">
+          <th style="text-align:left">Project</th>
+          <th style="text-align:left">WP</th>
+          <th>Total</th>
+          <th>Sat</th><th>Sun</th><th>Mon</th><th>Tue</th>
+          <th>Wed</th><th>Thu</th><th>Fri</th>
+          <th style="text-align:left">Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <ui:repeat value="#{timesheetEdit.rows}" var="r">
+          <tr>
+            <td><h:outputText value="#{r.projectId}"/></td>
+            <td><h:outputText value="#{r.workPackageId}"/></td>
+            <td>
+              <h:outputText value="#{r.sum}">
+                <f:convertNumber minFractionDigits="1" maxFractionDigits="1"/>
+              </h:outputText>
+            </td>
+
+            <td><h:outputText value="#{r.getHour(0)}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+            <td><h:outputText value="#{r.getHour(1)}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+            <td><h:outputText value="#{r.getHour(2)}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+            <td><h:outputText value="#{r.getHour(3)}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+            <td><h:outputText value="#{r.getHour(4)}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+            <td><h:outputText value="#{r.getHour(5)}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+            <td><h:outputText value="#{r.getHour(6)}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+
+            <td><h:outputText value="#{r.notes}"/></td>
+          </tr>
+        </ui:repeat>
+
+        <!-- Totals row -->
+        <tr style="font-weight:bold; background:#fafafa;">
+          <td>Total</td><td></td>
+          <td>
+            <h:outputText value="#{timesheetEdit.sheet.totalHours}">
+              <f:convertNumber minFractionDigits="1" maxFractionDigits="1"/>
+            </h:outputText>
+          </td>
+          <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[0]}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+          <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[1]}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+          <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[2]}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+          <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[3]}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+          <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[4]}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+          <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[5]}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+          <td><h:outputText value="#{timesheetEdit.sheet.dailyHours[6]}"><f:convertNumber minFractionDigits="1" maxFractionDigits="1"/></h:outputText></td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Actions moved to bottom -->
+    <h:form id="actions" style="margin-top:1rem;">
+      <ui:fragment rendered="#{timesheetEdit.editable}">
+        <h:commandButton value="Edit"
+                         action="timesheetEdit"
+                         styleClass="btn btn-primary">
+          <f:setPropertyActionListener target="#{currentUser.selectedTimesheet}"
+                                       value="#{timesheetEdit.sheet}"/>
+        </h:commandButton>
+      </ui:fragment>
+
+      <ui:fragment rendered="#{not timesheetEdit.editable}">
+        <span style="color:#777;">This timesheet is read-only (past week).</span>
+      </ui:fragment>
+    </h:form>
+
+  </ui:define>
+</ui:composition>
+</html>

@@ -1,0 +1,6 @@
+build:
+  uri: https://gitlab.infoteach.ca/bdlink/ch2-numberquiz.git
+  mode: s2i
+  ref: main
+deploy:
+  replicas: 1
