@@ -19,10 +19,13 @@ import java.sql.Connection;
 
 
 @ApplicationScoped
-public class EmployeeDao {
+public class EmployeeDao implements EmployeeList {
     
     @Resource(lookup = "java:/jdbc/timesheetsDS")
     private DataSource ds;
+	
+	@Inject
+    private CredentialsDao credentialsDao;
     
     private static Employee mapEmployee(ResultSet rs) throws SQLException {
         String role = rs.getString("role");
@@ -93,30 +96,35 @@ public class EmployeeDao {
             WHERE LOWER(e.user_name) = LOWER(?)
             """;
         
-        public List<Employee> findAll() throws SQLException{
-            try(Connection c = ds.getConnection();
-                    PreparedStatement ps = c.prepareStatement(SQL_FIND_ALL);
-                    ResultSet rs = ps.executeQuery()){
-                        List<Employee> out = new ArrayList<>();
-                        while(rs.next()) {
-                            out.add(mapEmployee(rs));
-                        }
-                        return out;
-                    }
-        }
+        @Override
+		public List<Employee> getEmployees() {
+			List<Employee> list = new ArrayList<>();
+			try (Connection c = ds.getConnection();
+				PreparedStatement ps = c.prepareStatement(SQL_SELECT_ALL);
+				ResultSet rs = ps.executeQuery()) {
+	
+				while (rs.next()) {
+					list.add(mapEmployee(rs));
+				}
+			} catch (SQLException e) {
+			}
+			return list;
+		}
         
-        public Employee findByUserName(String userName) throws SQLException {
-            try(Connection c = ds.getConnection();
-                    PreparedStatement ps = c.prepareStatement(SQL_FIND_BY_USERNAME)){
-                ps.setString(1, userName);
-                try(ResultSet rs = ps.executeQuery()){
-                    if(rs.next()) {
-                        return mapEmployee(rs);
-                    }
-                    return null;
-                }
-            }
-        }
+        @Override
+		public Employee getEmployee(final String name) {
+			try (Connection c = ds.getConnection();
+				PreparedStatement ps = c.prepareStatement(SQL_SELECT_BY_USERNAME)) {
+				ps.setString(1, name);
+				try (ResultSet rs = ps.executeQuery()) {
+					if (rs.next()) {
+						return mapEmployee(rs);
+					}
+				}
+			} catch (SQLException e) {
+			}
+			return null;
+		}
         
         public Employee findByEmpNumber(int empNumber) throws SQLException{
             try(Connection c = ds.getConnection();
@@ -141,33 +149,45 @@ public class EmployeeDao {
             }
         }
         
-        public long create(Employee e, String rawPassword) throws SQLException{
-            try(Connection c = ds.getConnection()){
-                c.setAutoCommit(false);
-                long employeeId;
-                
-                try(PreparedStatement ps = c.prepareStatement(SQL_INSERT_EMP, Statement.RETURN_GENERATED_KEYS)){
-                    ps.setString(1, e.getName());
-                    ps.setInt(2, e.getEmpNumber());
-                    ps.setString(3, e.getUserName());
-                    ps.executeUpdate();
-                    try(ResultSet keys = ps.getGeneratedKeys()){
-                        if(!keys.next()) {
-                            c.rollback();
-                            throw new SQLException("No employee_id generated.");
-                        }
-                        employeeId = keys.getLong(1);
-                    }
-                }
-                try(PreparedStatement ps = c.prepareStatement(SQL_INSERT_CRED)){
-                    ps.setLong(1, employeeId);
-                    ps.setString(2, rawPassword);
-                    ps.executeUpdate();
-                }
-                c.commit();
-                return employeeId;
-            }
-        }
+        @Override
+		public void addEmployee(final Employee emp) {
+			int number = emp.getEmpNumber();
+			if (number == 0) {
+				number = nextEmpNumber();
+				emp.setEmpNumber(number);
+			}
+	
+			final String role = (emp instanceof Admin) ? "ADMIN" : "USER";
+	
+			try (Connection c = ds.getConnection();
+				PreparedStatement ps = c.prepareStatement(SQL_INSERT_EMP)) {
+	
+				ps.setString(1, emp.getName());
+				ps.setInt(2, number);
+				ps.setString(3, emp.getUserName());
+				ps.setString(4, role);
+				ps.executeUpdate();
+	
+				
+				if (credentialsDao != null) {
+					try {
+						credentialsDao.createOrReset(emp.getUserName(), "password");
+					} catch (Exception ignored) {
+
+					}
+				}
+	
+			} catch (SQLIntegrityConstraintViolationException dup) {
+
+				if (dup.getMessage() != null && dup.getMessage().toLowerCase().contains("user_name")) {
+					throw new IllegalStateException("Username already exists: " + emp.getUserName());
+				} else {
+					throw new IllegalStateException("Employee number already exists: " + number);
+				}
+			} catch (SQLException e) {
+				throw new IllegalStateException("Unable to add employee", e);
+			}
+		}
         
         public void update(Employee e) throws SQLException{
             try(Connection c = ds.getConnection();
@@ -180,14 +200,19 @@ public class EmployeeDao {
             }
         }
         
-        public void deleteByUserName(String userName) throws SQLException{
-            if("admin".equalsIgnoreCase(userName)) return;
-            try(Connection c = ds.getConnection();
-                    PreparedStatement ps = c.prepareStatement(SQL_DELETE_EMP_BY_USERNAME)){
-                ps.setString(1, userName);
-                ps.executeUpdate();
-            }
-        }
+        @Override
+		public void deleteEmployee(final Employee emp) {
+			if (emp != null && "admin".equalsIgnoreCase(emp.getUserName())) {
+				return;
+			}
+			try (Connection c = ds.getConnection();
+				PreparedStatement ps = c.prepareStatement(SQL_DELETE_BY_EMPNUM)) {
+				ps.setInt(1, emp.getEmpNumber());
+				ps.executeUpdate();	
+			} catch (SQLException e) {
+
+			}
+		}
         
         public boolean verify(Credentials cred) throws SQLException {
             try (Connection c = ds.getConnection();
