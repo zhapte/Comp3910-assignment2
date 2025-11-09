@@ -7,14 +7,19 @@ import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class AuthServiceDB {
-    @Inject private CredentialsDao creds;
-    @Inject private EmployeeDao employees;
+    @Inject 
+	private CredentialsDao creds;
+	
+    @Inject 
+	private EmployeeDao employees;
     
-    public Employee authenticate(Credentials c) {
+     public Employee authenticate(final Credentials c) {
         try {
-            if(!creds.verify(c)) return null;
-            return employees.findByUserName(c.getUserName());
+            if (c == null || c.getUserName() == null || c.getPassword() == null) return null;
+            if (!creds.verify(c)) return null;
+            return employees.getEmployee(c.getUserName());
         } catch (Exception e) {
+            // TODO: log e
             return null;
         }
     }

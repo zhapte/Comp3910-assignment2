@@ -15,7 +15,7 @@ import java.util.List;
 @ApplicationScoped
 public class TimesheetRowDao {
     
-    @Resource(lookup = "java:/jdbc/timesheetDS")
+    @Resource(lookup = "java:/jdbc/timesheetsDS")
     private DataSource ds;
     
     public static final class RowRecord{
