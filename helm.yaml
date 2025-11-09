@@ -4,3 +4,12 @@ build:
   ref: main
 deploy:
   replicas: 1
+  env:
+    - name: MYSQL_DATABASE
+      value: timesheets
+    - name: MYSQL_USER
+      value: timesheet_user
+    - name: MYSQL_PASSWORD
+      value: password
+    - name: MYSQL_DATASOURCE
+      value: timesheetsDS

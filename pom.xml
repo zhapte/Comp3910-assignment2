@@ -6,7 +6,7 @@
    http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>ca.bcit.infosys</groupId>
-  <artifactId>Assignment-01</artifactId>
+  <artifactId>Assignment-02</artifactId>
   <version>1.0.0-SNAPSHOT</version>
   <packaging>war</packaging>
 	<properties>
@@ -49,7 +49,7 @@
   </repositories>	
 
    <build>
-    <finalName>Assignment-01</finalName>
+    <finalName>Assignment-02</finalName>
     <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -65,6 +65,10 @@
                         <version>${version.wildfly}</version>
                         <verbose>true</verbose>
                         <context>cloud</context>
+                        <add-ons>
+							<add-on>mysql</add-on>
+						</add-ons>
+
                     </discover-provisioning-info>
                     <galleon-options>
                         <jboss-fork-embedded>true</jboss-fork-embedded>
