@@ -24,7 +24,7 @@ public class LoginBean implements Serializable {
 
     /** Service responsible for verifying login credentials. */
 	@Inject
-	private AuthServiceDB authService;
+	private AuthService authService;
 
 	/** Represents the currently logged-in user (session-scoped context). */
     @Inject
