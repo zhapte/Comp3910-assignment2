@@ -13,13 +13,11 @@ public class AuthServiceDB {
     @Inject 
 	private EmployeeDao employees;
     
-     public Employee authenticate(final Credentials c) {
+    public Employee authenticate(Credentials c) {
         try {
-            if (c == null || c.getUserName() == null || c.getPassword() == null) return null;
-            if (!creds.verify(c)) return null;
+            if(!creds.verify(c)) return null;
             return employees.getEmployee(c.getUserName());
         } catch (Exception e) {
-            // TODO: log e
             return null;
         }
     }

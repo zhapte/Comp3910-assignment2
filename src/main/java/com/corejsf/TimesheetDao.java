@@ -11,6 +11,15 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Date;
 import java.sql.Statement;
+import ca.bcit.infosys.timesheet.*;
+import ca.bcit.infosys.employee.*;
+
+import jakarta.inject.Inject;
+import java.util.Map;
+import java.util.HashMap;
+import java.sql.SQLIntegrityConstraintViolationException;
+import java.time.DayOfWeek;
+import java.time.temporal.TemporalAdjusters;
 
 
 import java.util.ArrayList;
@@ -20,7 +29,7 @@ import java.time.LocalDate;
 @ApplicationScoped
 public class TimesheetDao implements TimesheetCollection {
 
-    @Resource(lookup = "java:/jdbc/timesheetsDS")   
+    @Resource(lookup = "java:jboss/datasources/timesheetsDS")   
     private DataSource ds;
 
     @Inject
@@ -167,7 +176,7 @@ public class TimesheetDao implements TimesheetCollection {
 
         if (loadRows && timesheetRowDao != null) {
             final long tsId = rs.getLong("timesheet_id");
-            List<TimesheetRow> rows = timesheetRowDao.findRowsForTimesheet(tsId); 
+            List<TimesheetRow> rows = timesheetRowDao.findByTimesheetAsDomain(tsId); 
             if (rows != null) {
                 ts.setDetails(rows);
             }

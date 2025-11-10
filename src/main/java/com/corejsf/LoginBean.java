@@ -24,7 +24,7 @@ public class LoginBean implements Serializable {
 
     /** Service responsible for verifying login credentials. */
 	@Inject
-	private AuthService authService;
+	private AuthServiceDB authService;
 
 	/** Represents the currently logged-in user (session-scoped context). */
     @Inject
@@ -66,17 +66,24 @@ public class LoginBean implements Serializable {
      * @return navigation outcome "userHome" if login succeeds, or null if it fails
      */
     public String login(){
-       Employee emp = authService.authenticate(cred);
+        if (cred != null && cred.getUserName() != null) {
+            cred.setUserName(cred.getUserName().trim());
+        }
+
+        final Employee emp = authService.authenticate(cred);
         if (emp == null) {
             FacesContext.getCurrentInstance().addMessage(
                 null,
                 new FacesMessage(FacesMessage.SEVERITY_ERROR,
                     "Login failed", "Invalid username or password")
             );
-            return null; // stay on login page
+            return null;
         }
 
         currentUser.setEmployee(emp);
+        currentUser.clearSelectedTimesheet();
+
+        cred = new Credentials();
 
         return "userHome";
     }

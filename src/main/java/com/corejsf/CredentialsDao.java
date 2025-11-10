@@ -14,14 +14,14 @@ import jakarta.enterprise.context.ApplicationScoped;
 
 @ApplicationScoped
 public class CredentialsDao {
-    @Resource(lookup = "java:/jdbc/timesheetsDS")
+    @Resource(lookup = "java:jboss/datasources/timesheetsDS")
     private DataSource ds;
     
     private static final String SQL_VERIFY = """
-            SELECT 1
-            FROM credentials c
-            JOIN employees e ON e.employees_id = c.employee_id
-            WHERE LOWER(e.user_name) = LOWER(?) AND c.password_hash = ?
+			SELECT 1
+			FROM credentials c
+			JOIN employees e ON e.employee_id = c.employee_id
+			WHERE LOWER(e.user_name) = LOWER(?) AND c.password_hash = ?
             """;
     
     private static final String SQL_CHANGE_PASSWORD = """

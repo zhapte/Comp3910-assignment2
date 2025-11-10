@@ -16,11 +16,18 @@ import java.sql.ResultSet;
 import java.sql.PreparedStatement;
 import java.sql.Connection;
 
+import jakarta.inject.Inject;
+import java.util.Map;
+import java.util.HashMap;
+import java.sql.SQLIntegrityConstraintViolationException;
+import java.time.DayOfWeek;
+import java.time.temporal.TemporalAdjusters;
+
 
 @ApplicationScoped
 public class EmployeeDao implements EmployeeList {
 
-    @Resource(lookup = "java:/jdbc/timesheetsDS")
+    @Resource(lookup = "java:jboss/datasources/timesheetsDS")
     private DataSource ds;
 
     @Inject
@@ -254,7 +261,7 @@ public class EmployeeDao implements EmployeeList {
 
         try {
             if (credentialsDao != null) {
-                credentialsDao.createOrReset(emp.getUserName(), "password");
+                credentialsDao.changePassword(emp.getUserName(), "password");
             }
         } catch (Exception ignored) {}
     }
