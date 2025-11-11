@@ -2,6 +2,8 @@ package com.corejsf;
 
 import jakarta.enterprise.context.ConversationScoped;
 import jakarta.enterprise.context.Conversation;
+import jakarta.faces.application.FacesMessage;
+import jakarta.faces.context.FacesContext;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import java.io.Serializable;
@@ -11,6 +13,10 @@ import java.lang.Float;
 import jakarta.annotation.PostConstruct;
 import java.time.LocalDate;
 import java.util.Arrays;
+import java.util.Locale;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
 import ca.bcit.infosys.timesheet.*;
 import ca.bcit.infosys.employee.*;
 
@@ -96,7 +102,6 @@ public class TimesheetEditBean implements Serializable {
             conversation.setTimeout(20 * 60 * 1000L);
         }
         if (sheet != null) return; 
-		// postback guard
         sheet = currentUser.getSelectedTimesheet();
         if (sheet == null) {
             timeSheetRepo.addTimesheet();
@@ -110,7 +115,6 @@ public class TimesheetEditBean implements Serializable {
         rows.clear();
         rows.addAll(sheet.getDetails());
 
-        // Build editable grids from model
 
         for (TimesheetRow r : rows) {
 			float[] hrs = r.getHours(); 
@@ -156,6 +160,10 @@ public class TimesheetEditBean implements Serializable {
 		
 		if (!validateTotalsFromGrid()) {
 			return null; 
+		}
+		
+		if (!validateUniqueProjectWP()) {
+			return null;
 		}
 		
         for (int i = 0; i < rows.size(); i++) {
@@ -327,6 +335,40 @@ public class TimesheetEditBean implements Serializable {
 	
 		return valid;
 	}
+	
+	private boolean validateUniqueProjectWP() {
+		boolean ok = true;
+		Map<String, Integer> firstSeenAtRow = new LinkedHashMap<>(); 
+	
+		for (int i = 0; i < rows.size(); i++) {
+			TimesheetRow r = rows.get(i);
+	
+			int projectId = r.getProjectId(); 
+			String wp = Optional.ofNullable(r.getWorkPackageId()).orElse("").trim();
+	
+			// Ignore “empty” rows (lets users keep spare rows)
+			if (projectId == 0 && wp.isEmpty()) continue;
+	
+			// Normalize key (case-insensitive WP)
+			String key = projectId + "||" + wp.toUpperCase(Locale.ROOT);
+	
+			Integer other = firstSeenAtRow.putIfAbsent(key, i + 1);
+			if (other != null) {
+				FacesContext.getCurrentInstance().addMessage(
+					null,
+					new FacesMessage(
+						FacesMessage.SEVERITY_ERROR,
+						String.format(
+							"Duplicate Project/WP: project %d with WP \"%s\" appears in rows %d and %d.",
+							projectId, wp, other, i + 1),
+						null
+					)
+				);
+				ok = false;
+			}
+		}
+		return ok;
+}
 	
 	public Long getTsId() { return tsId; }
 	public void setTsId(Long tsId) { this.tsId = tsId; }

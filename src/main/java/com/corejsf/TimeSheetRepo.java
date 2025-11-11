@@ -379,25 +379,26 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
 
     private void insertRow(Connection c, Timesheet ts, int lineNo, TimesheetRow r) throws SQLException {
         Long tsId = timesheetIds.get(ts);
-        if (tsId == null) throw new IllegalStateException("Timesheet id unknown during row insert");
-
-        final String ins = """
-            INSERT INTO timesheet_rows (timesheet_id, line_no, project_id, work_package_id, packed_hours, notes)
-            VALUES (?, ?, ?, ?, ?, NULL)
-        """;
-        try (PreparedStatement ps = c.prepareStatement(ins, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setLong(1, tsId);
-            ps.setInt(2, lineNo);
-            ps.setInt(3, r.getProjectId());
-            ps.setString(4, nvl(r.getWorkPackageId()));
-            ps.setLong(5, packHours(safeHours(r)));
-            ps.executeUpdate();
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (keys.next()) {
-                    rowIds.put(r, keys.getLong(1));
-                }
-            }
-        }
+		if (tsId == null) throw new IllegalStateException("Timesheet id unknown during row insert");
+	
+		final String ins = """
+			INSERT INTO timesheet_rows (timesheet_id, line_no, project_id, work_package_id, packed_hours, notes)
+			VALUES (?, ?, ?, ?, ?, ?)
+		""";
+		try (PreparedStatement ps = c.prepareStatement(ins, Statement.RETURN_GENERATED_KEYS)) {
+			ps.setLong(1, tsId);
+			ps.setInt(2, lineNo);
+			ps.setInt(3, r.getProjectId());
+			ps.setString(4, nvl(r.getWorkPackageId()));
+			ps.setLong(5, packHours(safeHours(r)));  // SAT..FRI as in your bean
+			ps.setString(6, r.getNotes());           // <-- persist notes now
+			ps.executeUpdate();
+			try (ResultSet keys = ps.getGeneratedKeys()) {
+				if (keys.next()) {
+					rowIds.put(r, keys.getLong(1));
+				}
+			}
+		}
     }
 
     private long requireEmployeeId(Connection c, Employee e) throws SQLException {
