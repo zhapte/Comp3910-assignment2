@@ -34,7 +34,8 @@
         <span><b>Week #:</b> #{timesheetEdit.weekNumber}</span>
       </div>
 
-      <h:messages globalOnly="true" style="color: red; margin-bottom: 1em;" />
+      <h:messages globalOnly="false" showSummary="true" showDetail="true"
+            style="color:red; margin-bottom:1em;" />
 
       <!-- Simple full-postback table -->
       <table class="table" style="width:100%; border-collapse:collapse;" border="1" cellpadding="5">
@@ -61,13 +62,19 @@
                 </h:outputText>
               </td>
 
-              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][0]}" style="width:5ch; text-align:center;"/></td>
-              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][1]}" style="width:5ch; text-align:center;"/></td>
-              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][2]}" style="width:5ch; text-align:center;"/></td>
-              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][3]}" style="width:5ch; text-align:center;"/></td>
-              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][4]}" style="width:5ch; text-align:center;"/></td>
-              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][5]}" style="width:5ch; text-align:center;"/></td>
-              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][6]}" style="width:5ch; text-align:center;"/></td>
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][0]}"  validatorMessage="Hours must be between 0 and 24" style="width:5ch; text-align:center;"><f:validateDoubleRange minimum="0" maximum="24"/></h:inputText></td>
+			  
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][1]}"  validatorMessage="Hours must be between 0 and 24" style="width:5ch; text-align:center;"><f:validateDoubleRange minimum="0" maximum="24"/></h:inputText></td>
+			  
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][2]}"  validatorMessage="Hours must be between 0 and 24" style="width:5ch; text-align:center;"><f:validateDoubleRange minimum="0" maximum="24"/></h:inputText></td>
+			  
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][3]}"  validatorMessage="Hours must be between 0 and 24" style="width:5ch; text-align:center;"><f:validateDoubleRange minimum="0" maximum="24"/></h:inputText></td>
+			  
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][4]}"  validatorMessage="Hours must be between 0 and 24" style="width:5ch; text-align:center;"><f:validateDoubleRange minimum="0" maximum="24"/></h:inputText></td>
+			  
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][5]}"  validatorMessage="Hours must be between 0 and 24" style="width:5ch; text-align:center;"><f:validateDoubleRange minimum="0" maximum="24"/></h:inputText></td>
+			  
+              <td><h:inputText value="#{timesheetEdit.hoursGrid[st.index][6]}"  validatorMessage="Hours must be between 0 and 24" style="width:5ch; text-align:center;"><f:validateDoubleRange minimum="0" maximum="24"/></h:inputText></td>
 
               <td><h:inputText value="#{timesheetEdit.notesGrid[st.index]}" style="width:100%;"/></td>
             </tr>

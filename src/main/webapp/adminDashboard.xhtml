@@ -29,7 +29,7 @@
 
     <h1>#{msgs.dashboardWelcome} #{currentUser.employee.name}!</h1>
 
-    <h:messages globalOnly="true" style="margin-bottom:1rem; color:#c00" />
+    <h:messages globalOnly="true" showDetail="true" style="margin-bottom:1rem; color:#c00" />
 
     <h2>#{msgs.adminDashboardSectionTitle1}</h2>
 
@@ -86,12 +86,26 @@
     <h:form id="addForm">
       <div class="form-row">
         <label>#{msgs.Name}</label>
-        <h:inputText value="#{adminUserBean.name}" required="true" />
+        <h:inputText id="name" 
+					 value="#{adminUserBean.name}" 
+					 required="true"
+					 requiredMessage="Name is required."
+					 validatorMessage="Use letters, spaces, hyphens, apostrophes only.">
+			<f:validateRegex pattern="^[A-Za-z\s'-]+$" />
+		</h:inputText>
+		<h:message for="name" />
       </div>
 
       <div class="form-row">
         <label>#{msgs.EmpNum}</label>
-        <h:inputText value="#{adminUserBean.empNumber}" required="true" />
+        <h:inputText id="empNumber" 
+					 value="#{adminUserBean.empNumber}" 
+					 required="true"
+					 requiredMessage="Employee # is required."
+					 converterMessage="Employee # must be a whole number.">
+			<f:convertNumber integerOnly="true" />
+		</h:inputText>
+		<h:message for="empNumber" />
       </div>
 
       <div class="form-row">

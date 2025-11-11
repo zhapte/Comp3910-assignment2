@@ -5,127 +5,157 @@ import jakarta.annotation.Resource;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.annotation.PostConstruct;
-import javax.sql.DataSource;
 
 import java.io.Serializable;
-import java.util.*;
 import java.sql.*;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.*;
+import javax.sql.DataSource;
 import ca.bcit.infosys.timesheet.*;
 import ca.bcit.infosys.employee.*;
 
 
 @Named("timeSheetRepo")
 @ApplicationScoped
-public class TimeSheetRepo  implements TimesheetCollection, Serializable {
-	
-	@Resource(lookup = "java:jboss/datasources/timesheetsDS")
-    private DataSource ds;
-	
-	@Inject
+public class TimeSheetRepo implements TimesheetCollection, Serializable {
+
+    @Inject
     private CurrentUser currentUser;
 
-	    @Override
+    @Resource(lookup = "java:jboss/datasources/timesheetsDS")
+    private javax.sql.DataSource ds;
+
+
+    private final Map<Timesheet, Long> timesheetIds = new WeakHashMap<>();
+    private final Map<TimesheetRow, Long> rowIds = new WeakHashMap<>();
+
+    // ----------------------------------------------------
+    // Public API (unchanged signatures)
+    // ----------------------------------------------------
+
+    @Override
     public List<Timesheet> getTimesheets() {
-        String sql = """
-            SELECT ts.timesheet_id, ts.employee_id, ts.end_date, ts.overtime_deci, ts.flextime_deci,
-                   e.name, e.emp_number, e.user_name, e.role
-            FROM timesheets ts
-            JOIN employees e ON e.employee_id = ts.employee_id
-            ORDER BY ts.employee_id, ts.end_date DESC
+        final String sql = """
+            SELECT t.timesheet_id, t.employee_id, t.end_date, t.overtime_deci, t.flextime_deci
+            FROM timesheets t
+            ORDER BY t.employee_id, t.end_date DESC
         """;
-
-        List<Timesheet> out = new ArrayList<>();
-        Map<Long, Timesheet> byId = new LinkedHashMap<>();
-
+        List<Timesheet> result = new ArrayList<>();
         try (Connection c = ds.getConnection();
              PreparedStatement ps = c.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
-                long tsId = rs.getLong("timesheet_id");
-                byId.put(tsId, mapTimesheetHeader(rs));
+                Timesheet ts = materializeTimesheet(rs);
+                loadRows(c, ts);
+                result.add(ts);
             }
-
-            for (Map.Entry<Long, Timesheet> e : byId.entrySet()) {
-                loadRows(e.getKey(), e.getValue());
-                out.add(e.getValue());
-            }
-        } catch (SQLException ex) {
-            throw new RuntimeException("getTimesheets failed", ex);
+        } catch (SQLException e) {
+            throw new RuntimeException("getTimesheets() failed", e);
         }
-        return out;
+        return result;
     }
 
     @Override
-    public List<Timesheet> getTimesheets(Employee e) {
+    public List<Timesheet> getTimesheets(final Employee e) {
         if (e == null) return Collections.emptyList();
-
-        String sql = """
-            SELECT ts.timesheet_id, ts.employee_id, ts.end_date, ts.overtime_deci, ts.flextime_deci,
-                   emp.name, emp.emp_number, emp.user_name, emp.role
-            FROM timesheets ts
-            JOIN employees emp ON emp.employee_id = ts.employee_id
-            WHERE ts.employee_id = ?
-            ORDER BY ts.end_date DESC
+        final String sql = """
+            SELECT t.timesheet_id, t.employee_id, t.end_date, t.overtime_deci, t.flextime_deci
+            FROM timesheets t
+            WHERE t.employee_id = ?
+            ORDER BY t.end_date DESC
         """;
-
-        List<Timesheet> out = new ArrayList<>();
-        Map<Long, Timesheet> byId = new LinkedHashMap<>();
-
+        List<Timesheet> result = new ArrayList<>();
         try (Connection c = ds.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-
-            ps.setLong(1, employeeIdFor(e, c));
-
+            ps.setLong(1, requireEmployeeId(c, e));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    long tsId = rs.getLong("timesheet_id");
-                    byId.put(tsId, mapTimesheetHeader(rs));
+                    Timesheet ts = materializeTimesheet(rs, e);
+                    loadRows(c, ts);
+                    result.add(ts);
                 }
-            }
-
-            for (Map.Entry<Long, Timesheet> en : byId.entrySet()) {
-                loadRows(en.getKey(), en.getValue(), c);
-                out.add(en.getValue());
             }
         } catch (SQLException ex) {
             throw new RuntimeException("getTimesheets(Employee) failed", ex);
         }
-        return out;
+        return result;
     }
 
     @Override
-    public Timesheet getCurrentTimesheet(Employee e) {
-        List<Timesheet> list = getTimesheets(e);
-        if (list.isEmpty()) return null;
-
-        LocalDate today = LocalDate.now();
-
-        Comparator<Timesheet> byAbsDays =
-                Comparator.comparingLong(ts -> Math.abs(ChronoUnit.DAYS.between(ts.getEndDate(), today)));
-        Comparator<Timesheet> tieBreaker =
-                Comparator.comparing(ts -> ts.getEndDate().isBefore(today));
-
-        return list.stream()
-                .filter(ts -> ts.getEndDate() != null)
-                .min(byAbsDays.thenComparing(tieBreaker))
-                .orElse(list.getFirst());
+    public Timesheet getCurrentTimesheet(final Employee e) {
+        if (e == null) return null;
+        final String sql = """
+            SELECT t.timesheet_id, t.employee_id, t.end_date, t.overtime_deci, t.flextime_deci
+            FROM timesheets t
+            WHERE t.employee_id = ?
+            ORDER BY ABS(DATEDIFF(t.end_date, CURDATE())),
+                     CASE WHEN t.end_date < CURDATE() THEN 1 ELSE 0 END,
+                     t.end_date DESC
+            LIMIT 1
+        """;
+        try (Connection c = ds.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setLong(1, requireEmployeeId(c, e));
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                Timesheet ts = materializeTimesheet(rs, e);
+                loadRows(c, ts);
+                return ts;
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException("getCurrentTimesheet(Employee) failed", ex);
+        }
     }
 
     @Override
     public String addTimesheet() {
         Employee me = currentUser.getEmployee();
-        if (me == null) throw new IllegalStateException("No current user.");
-        LocalDate end = LocalDate.now().with(java.time.DayOfWeek.FRIDAY);
-        Timesheet ts = new Timesheet(me, end);
-        for (int i = 0; i < 5; i++) ts.addRow(); // 5 empty rows by default
-        save(ts);
-        return "created";
-    }
+        if (me == null) return "no-user";
 
-    // ---------- Convenience for current user ----------
+        LocalDate endOfWeek = endOfWeekFriday(LocalDate.now());
+
+        // insert new shell timesheet (multiple per same week is allowed)
+        final String insertTs = """
+            INSERT INTO timesheets (employee_id, end_date, overtime_deci, flextime_deci)
+            VALUES (?, ?, 0, 0)
+        """;
+        try (Connection c = ds.getConnection();
+             PreparedStatement ps = c.prepareStatement(insertTs, Statement.RETURN_GENERATED_KEYS)) {
+
+            long empId = requireEmployeeId(c, me);
+            ps.setLong(1, empId);
+            ps.setDate(2, Date.valueOf(endOfWeek));
+            ps.executeUpdate();
+
+            long tsId;
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                keys.next();
+                tsId = keys.getLong(1);
+            }
+
+            // Build an in-memory object mirroring DB state (5 empty rows)
+            Timesheet ts = new Timesheet(me, endOfWeek);
+            ts.setOvertime(0);
+            ts.setFlextime(0);
+            timesheetIds.put(ts, tsId);
+
+            for (int i = 0; i < 5; i++) {
+                TimesheetRow row = new TimesheetRow();
+                row.setProjectId(0);
+                row.setWorkPackageId("");
+                row.setHours(new float[]{0, 0, 0, 0, 0, 0, 0});
+                ts.getDetails().add(row);
+                insertRow(c, ts, i + 1, row); // line_no is 1-based
+            }
+
+            return "created";
+        } catch (SQLException ex) {
+            throw new RuntimeException("addTimesheet() failed", ex);
+        }
+    }
 
     public Timesheet getMyCurrentTimesheet() {
         return getCurrentTimesheet(currentUser.getEmployee());
@@ -135,213 +165,270 @@ public class TimeSheetRepo  implements TimesheetCollection, Serializable {
         return getTimesheets(currentUser.getEmployee());
     }
 
-    public Timesheet getMyNewest() {
-        List<Timesheet> mine = getMyTimesheets();
-        if (mine.isEmpty()) throw new NoSuchElementException("No timesheets for current user.");
-        return mine.get(0); // list is DESC by end_date
-    }
-
-    // ---------- Persistence (upsert header, replace rows) ----------
-
-    public void save(Timesheet ts) {
-        if (ts == null || ts.getEmployee() == null || ts.getEndDate() == null) return;
-
-        String upsertTs = """
-            INSERT INTO timesheets (employee_id, end_date, overtime_deci, flextime_deci)
-            VALUES (?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE
-              overtime_deci = VALUES(overtime_deci),
-              flextime_deci = VALUES(flextime_deci)
-        """;
-
-        String deleteRows = """
-            DELETE tr FROM timesheet_rows tr
-            JOIN timesheets ts ON ts.timesheet_id = tr.timesheet_id
-            WHERE ts.employee_id = ? AND ts.end_date = ?
-        """;
-
-        String insertRow = """
-            INSERT INTO timesheet_rows (timesheet_id, line_no, project_id, work_package_id, packed_hours, notes)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """;
-
+    public void save(final Timesheet ts) {
+        if (ts == null) return;
         try (Connection c = ds.getConnection()) {
             c.setAutoCommit(false);
+            try {
+                Long existingId = timesheetIds.get(ts);
+                if (existingId == null) {
+                    // Insert new timesheet record
+                    long empId = requireEmployeeId(c, ts.getEmployee());
+                    final String ins = """
+                        INSERT INTO timesheets (employee_id, end_date, overtime_deci, flextime_deci)
+                        VALUES (?, ?, ?, ?)
+                    """;
+                    try (PreparedStatement ps = c.prepareStatement(ins, Statement.RETURN_GENERATED_KEYS)) {
+                        ps.setLong(1, empId);
+                        ps.setDate(2, Date.valueOf(ts.getEndDate() != null ? ts.getEndDate() : endOfWeekFriday(LocalDate.now())));
+                        ps.setInt(3, safeDeci(ts.getOvertime()));
+                        ps.setInt(4, safeDeci(ts.getFlextime()));
+                        ps.executeUpdate();
+                        try (ResultSet keys = ps.getGeneratedKeys()) {
+                            keys.next();
+                            existingId = keys.getLong(1);
+                            timesheetIds.put(ts, existingId);
+                        }
+                    }
+                } else {
+                    // Update header
+                    final String upd = """
+                        UPDATE timesheets
+                           SET end_date = ?, overtime_deci = ?, flextime_deci = ?
+                         WHERE timesheet_id = ?
+                    """;
+                    try (PreparedStatement ps = c.prepareStatement(upd)) {
+                        ps.setDate(1, Date.valueOf(ts.getEndDate()));
+                        ps.setInt(2, safeDeci(ts.getOvertime()));
+                        ps.setInt(3, safeDeci(ts.getFlextime()));
+                        ps.setLong(4, existingId);
+                        ps.executeUpdate();
+                    }
 
-            long empId = employeeIdFor(ts.getEmployee(), c);
-
-            // 1) Upsert header (overtime/flextime default to 0 to avoid missing getters)
-            try (PreparedStatement ps = c.prepareStatement(upsertTs)) {
-                ps.setLong(1, empId);
-                ps.setDate(2, java.sql.Date.valueOf(ts.getEndDate()));
-                ps.setInt(3, 0);
-                ps.setInt(4, 0);
-                ps.executeUpdate();
-            }
-
-            // 2) Resolve timesheet_id
-            long tsId = findTimesheetId(empId, ts.getEndDate(), c);
-
-            // 3) Replace rows for this header
-            try (PreparedStatement psDel = c.prepareStatement(deleteRows)) {
-                psDel.setLong(1, empId);
-                psDel.setDate(2, java.sql.Date.valueOf(ts.getEndDate()));
-                psDel.executeUpdate();
-            }
-
-            // 4) Insert detail rows
-            try (PreparedStatement psIns = c.prepareStatement(insertRow)) {
-                List<TimesheetRow> rows = ts.getDetails();
-                for (int i = 0; i < rows.size(); i++) {
-                    TimesheetRow r = rows.get(i);
-                    psIns.setLong(1, tsId);
-                    psIns.setInt(2, i + 1); // line_no
-                    psIns.setInt(3, r.getProjectId());
-                    psIns.setString(4, Optional.ofNullable(r.getWorkPackageId()).orElse(""));
-                    psIns.setLong(5, packHours(r.getHours())); // 7-day deci-hours packed into BIGINT
-                    psIns.setString(6, null); // notes, wire later if desired
-                    psIns.addBatch();
+                    // Clear rows to resync (simpler & safe)
+                    try (PreparedStatement del = c.prepareStatement("DELETE FROM timesheet_rows WHERE timesheet_id = ?")) {
+                        del.setLong(1, existingId);
+                        del.executeUpdate();
+                    }
                 }
-                psIns.executeBatch();
-            }
 
-            c.commit();
-        } catch (SQLException e) {
-            throw new RuntimeException("save(timesheet) failed", e);
+                // Re-insert rows in order
+                int lineNo = 1;
+                for (TimesheetRow r : ts.getDetails()) {
+                    insertRow(c, ts, lineNo++, r);
+                }
+
+                c.commit();
+            } catch (Exception ex) {
+                c.rollback();
+                throw ex;
+            } finally {
+                c.setAutoCommit(true);
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException("save(Timesheet) failed", ex);
         }
     }
 
-    // ---------- Mapping & SQL helpers ----------
+    public Timesheet getMyNewest() {
+        Employee me = currentUser.getEmployee();
+        if (me == null) return null;
+        final String sql = """
+            SELECT t.timesheet_id, t.employee_id, t.end_date, t.overtime_deci, t.flextime_deci
+            FROM timesheets t
+            WHERE t.employee_id = ?
+            ORDER BY t.end_date DESC
+            LIMIT 1
+        """;
+        try (Connection c = ds.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setLong(1, requireEmployeeId(c, me));
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                Timesheet ts = materializeTimesheet(rs, me);
+                loadRows(c, ts);
+                return ts;
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException("getMyNewest() failed", ex);
+        }
+    }
 
-    private Timesheet mapTimesheetHeader(ResultSet rs) throws SQLException {
-        String role = rs.getString("role");
-        Employee e = "ADMIN".equalsIgnoreCase(role) ? new Admin() : new User();
-        e.setName(rs.getString("name"));
-        e.setEmpNumber(rs.getInt("emp_number"));
-        e.setUserName(rs.getString("user_name"));
+    // ---------------- Helpers ----------------
 
-        LocalDate endDate = rs.getDate("end_date").toLocalDate();
-
-        // If your Timesheet has a constructor (Employee, LocalDate) use it:
-        Timesheet ts = new Timesheet(e, endDate);
-
-        // If your model later provides setters for overtime/flextime, set them here:
-        // ts.setOvertime(rs.getInt("overtime_deci"));
-        // ts.setFlextime(rs.getInt("flextime_deci"));
-
+    private Timesheet materializeTimesheet(ResultSet rs) throws SQLException {
+        long empId = rs.getLong("employee_id");
+        LocalDate end = rs.getDate("end_date").toLocalDate();
+        Employee e = loadEmployeeById(empId);
+        Timesheet ts = new Timesheet(e, end);
+        ts.setOvertime(rs.getInt("overtime_deci"));
+        ts.setFlextime(rs.getInt("flextime_deci"));
+        timesheetIds.put(ts, rs.getLong("timesheet_id"));
         return ts;
     }
 
-    private void loadRows(long timesheetId, Timesheet ts) {
-        try (Connection c = ds.getConnection()) {
-            loadRows(timesheetId, ts, c);
-        } catch (SQLException e) {
-            throw new RuntimeException("loadRows failed", e);
-        }
+    private Timesheet materializeTimesheet(ResultSet rs, Employee knownEmployee) throws SQLException {
+        LocalDate end = rs.getDate("end_date").toLocalDate();
+        Timesheet ts = new Timesheet(knownEmployee, end);
+        ts.setOvertime(rs.getInt("overtime_deci"));
+        ts.setFlextime(rs.getInt("flextime_deci"));
+        timesheetIds.put(ts, rs.getLong("timesheet_id"));
+        return ts;
     }
 
-    private void loadRows(long timesheetId, Timesheet ts, Connection c) throws SQLException {
-        String sql = """
-            SELECT line_no, project_id, work_package_id, packed_hours, notes
+    private void loadRows(Connection c, Timesheet ts) throws SQLException {
+        Long tsId = timesheetIds.get(ts);
+        if (tsId == null) return;
+
+        final String sql = """
+            SELECT row_id, line_no, project_id, work_package_id, packed_hours, notes
             FROM timesheet_rows
             WHERE timesheet_id = ?
-            ORDER BY line_no
+            ORDER BY line_no ASC
         """;
         try (PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, timesheetId);
+            ps.setLong(1, tsId);
             try (ResultSet rs = ps.executeQuery()) {
                 ts.getDetails().clear();
                 while (rs.next()) {
-                    TimesheetRow row = new TimesheetRow();
-                    row.setProjectId(rs.getInt("project_id"));
-                    row.setWorkPackageId(Optional.ofNullable(rs.getString("work_package_id")).orElse(""));
-                    row.setHours(unpackHours(rs.getLong("packed_hours")));
-                    ts.getDetails().add(row);
+                    TimesheetRow r = new TimesheetRow();
+                    r.setProjectId(rs.getInt("project_id"));
+                    r.setWorkPackageId(rs.getString("work_package_id"));
+                    r.setHours(unpackHours(rs.getLong("packed_hours")));
+                    // (Optional) if your model has notes, set it.
+                    ts.getDetails().add(r);
+                    rowIds.put(r, rs.getLong("row_id"));
                 }
             }
         }
     }
 
-    private long employeeIdFor(Employee e, Connection c) throws SQLException {
-        if (e.getEmpNumber() != 0) {
-            try (PreparedStatement ps = c.prepareStatement(
-                    "SELECT employee_id FROM employees WHERE emp_number=?")) {
-                ps.setInt(1, e.getEmpNumber());
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) return rs.getLong(1);
+    private void insertRow(Connection c, Timesheet ts, int lineNo, TimesheetRow r) throws SQLException {
+        Long tsId = timesheetIds.get(ts);
+        if (tsId == null) throw new IllegalStateException("Timesheet id unknown during row insert");
+
+        final String ins = """
+            INSERT INTO timesheet_rows (timesheet_id, line_no, project_id, work_package_id, packed_hours, notes)
+            VALUES (?, ?, ?, ?, ?, NULL)
+        """;
+        try (PreparedStatement ps = c.prepareStatement(ins, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setLong(1, tsId);
+            ps.setInt(2, lineNo);
+            ps.setInt(3, r.getProjectId());
+            ps.setString(4, nvl(r.getWorkPackageId()));
+            ps.setLong(5, packHours(safeHours(r)));
+            ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (keys.next()) {
+                    rowIds.put(r, keys.getLong(1));
                 }
             }
         }
-        try (PreparedStatement ps = c.prepareStatement(
-                "SELECT employee_id FROM employees WHERE LOWER(user_name)=LOWER(?)")) {
-            ps.setString(1, e.getUserName());
+    }
+
+    private long requireEmployeeId(Connection c, Employee e) throws SQLException {
+        // if emp_number is your stable bridge:
+        final String find = "SELECT employee_id FROM employees WHERE emp_number = ?";
+        try (PreparedStatement ps = c.prepareStatement(find)) {
+            ps.setInt(1, e.getEmpNumber());
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) return rs.getLong(1);
             }
         }
-        throw new SQLException("Employee not found: " + e.getUserName() + " (#" + e.getEmpNumber() + ")");
+        // If not found, create it on the fly
+        final String ins = "INSERT INTO employees (name, emp_number, user_name, role) VALUES (?, ?, ?, ?)";
+        try (PreparedStatement ps = c.prepareStatement(ins, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, nvl(e.getName(), "User " + e.getEmpNumber()));
+            ps.setInt(2, e.getEmpNumber());
+            ps.setString(3, nvl(e.getUserName(), "user" + e.getEmpNumber()));
+            ps.setString(4, "USER");
+            ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                keys.next();
+                return keys.getLong(1);
+            }
+        }
     }
 
-    private long findTimesheetId(long employeeId, LocalDate end, Connection c) throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement(
-                "SELECT timesheet_id FROM timesheets WHERE employee_id=? AND end_date=?")) {
+    private Employee loadEmployeeById(long employeeId) {
+        final String sql = "SELECT name, emp_number, user_name, role FROM employees WHERE employee_id = ?";
+        try (Connection c = ds.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setLong(1, employeeId);
-            ps.setDate(2, java.sql.Date.valueOf(end));
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) return rs.getLong(1);
+                if (rs.next()) {
+                    Employee e = "ADMIN".equals(rs.getString("role")) ? new Admin() : new Employee();
+                    e.setName(rs.getString("name"));
+                    e.setEmpNumber(rs.getInt("emp_number"));
+                    e.setUserName(rs.getString("user_name"));
+                    return e;
+                }
             }
+        } catch (SQLException ex) {
+            throw new RuntimeException("loadEmployeeById failed", ex);
         }
-        throw new SQLException("Timesheet header not found after upsert.");
+        // Fallback minimal employee
+        Employee e = new Employee();
+        e.setName("Unknown");
+        e.setEmpNumber(-1);
+        e.setUserName("unknown");
+        return e;
     }
 
-    // ---------- Hours packing: 7 bytes of deci-hours into a BIGINT ----------
+    private void ensureAdminExists() {
+        final String countSql = "SELECT COUNT(*) FROM employees";
+        try (Connection c = ds.getConnection();
+             PreparedStatement ps = c.prepareStatement(countSql);
+             ResultSet rs = ps.executeQuery()) {
+            rs.next();
+            if (rs.getLong(1) == 0) {
+                // Seed minimal admin
+                final String ins = "INSERT INTO employees (name, emp_number, user_name, role) VALUES ('System Admin', 0, 'admin', 'ADMIN')";
+                try (PreparedStatement insPs = c.prepareStatement(ins)) {
+                    insPs.executeUpdate();
+                }
+            }
+        } catch (SQLException ignored) {
+            // If schema not ready yet, skip seeding.
+        }
+    }
 
+    private static LocalDate endOfWeekFriday(LocalDate ref) {
+        LocalDate fri = ref.with(DayOfWeek.FRIDAY);
+        // java.time’s with(FRIDAY) returns Friday in the *same week*
+        return fri;
+    }
+
+    private static int safeDeci(Integer v) { return v == null ? 0 : v; }
+
+    private static float[] safeHours(TimesheetRow r) {
+        float[] h = r.getHours();
+        if (h == null || h.length != 7) return new float[]{0,0,0,0,0,0,0};
+        return h;
+        }
+
+    private static String nvl(String s) { return s == null ? "" : s; }
+    private static String nvl(String s, String def) { return s == null ? def : s; }
+
+    /** Pack 7 days of hours into BIGINT as tenths (Mon..Sun), 1 byte per day. */
     private static long packHours(float[] hours) {
         long v = 0L;
-        int len = (hours == null) ? 0 : Math.min(hours.length, 7);
-        for (int d = 0; d < 7; d++) {
-            int deci = 0;
-            if (d < len && hours[d] >= 0) {
-                float clamped = Math.max(0f, Math.min(24f, hours[d]));
-                deci = Math.round(clamped * 10f); // 0..240 fits in 1 byte
-            }
-            v |= ((long) (deci & 0xFF)) << (8L * d);
+        for (int i = 0; i < 7; i++) {
+            int tenths = Math.round(hours[i] * 10f);
+            if (tenths < 0) tenths = 0;
+            if (tenths > 255) tenths = 255; // cap to 1 byte
+            v |= ((long) tenths & 0xFFL) << (i * 8);
         }
         return v;
     }
 
+    /** Unpack BIGINT (Mon..Sun), 1 byte per day, as hours with one decimal. */
     private static float[] unpackHours(long packed) {
-        float[] h = new float[7];
-        for (int d = 0; d < 7; d++) {
-            int deci = (int) ((packed >> (8L * d)) & 0xFF);
-            h[d] = deci / 10f;
+        float[] out = new float[7];
+        for (int i = 0; i < 7; i++) {
+            int tenths = (int) ((packed >> (i * 8)) & 0xFFL);
+            out[i] = tenths / 10f;
         }
-        return h;
+        return out;
     }
-
-    // ---------- Admin helper ----------
-
-    private Employee getAdministrator() throws SQLException {
-        String sql = """
-            SELECT name, emp_number, user_name
-            FROM employees
-            WHERE role='ADMIN'
-            ORDER BY employee_id
-            LIMIT 1
-        """;
-        try (Connection c = ds.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-            if (!rs.next()) return null;
-            Employee e = new Admin();
-            e.setName(rs.getString("name"));
-            e.setEmpNumber(rs.getInt("emp_number"));
-            e.setUserName(rs.getString("user_name"));
-            return e;
-        }
-    }
-
-
-   
-	
 }

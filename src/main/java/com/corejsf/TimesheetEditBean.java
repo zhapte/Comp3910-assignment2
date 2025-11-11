@@ -10,6 +10,7 @@ import java.util.List;
 import java.lang.Float;
 import jakarta.annotation.PostConstruct;
 import java.time.LocalDate;
+import java.util.Arrays;
 import ca.bcit.infosys.timesheet.*;
 import ca.bcit.infosys.employee.*;
 
@@ -53,6 +54,11 @@ public class TimesheetEditBean implements Serializable {
 	
     /** Optional target week ending date for loading or creating a timesheet. */
 	private LocalDate targetDate;
+	
+	private Long tsId; 
+
+	
+	private static final String[] DAY_NAMES = {"Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"};
 
 	/**
      * Returns the target week-ending date associated with the timesheet.
@@ -85,39 +91,51 @@ public class TimesheetEditBean implements Serializable {
      */
 	@PostConstruct
     public void init() {
-        if (conversation.isTransient()) {
-            conversation.begin();
-            conversation.setTimeout(20 * 60 * 1000L);
-        }
-        if (sheet != null) return; 
-		// postback guard
-        sheet = currentUser.getSelectedTimesheet();
-        if (sheet == null) {
-            timeSheetRepo.addTimesheet();
-            sheet = timeSheetRepo.getMyNewest();
-        }
+		if (conversation.isTransient()) {
+			conversation.begin();
+			conversation.setTimeout(20 * 60 * 1000L);
+		}
+		if (sheet != null) return;
+	
+		if (tsId != null) {
+			sheet = timeSheetRepo.loadById(tsId);  
+			if (sheet == null) {
+				throw new IllegalStateException("Timesheet not found for id=" + tsId);
+			}
+		} else {
+			sheet = currentUser.getSelectedTimesheet();
+			if (sheet == null) {
+				timeSheetRepo.addTimesheet();
+				sheet = timeSheetRepo.getMyNewest();
+			}
+		}
+	
+
 		currentUser.setSelectedTimesheet(sheet);
-        while (sheet.getDetails().size() < 5) {
-            sheet.addRow();
-        }
+	
 
-        rows.clear();
-        rows.addAll(sheet.getDetails());
+		while (sheet.getDetails().size() < 5) {
+			sheet.addRow();
+		}
+	
 
-        // Build editable grids from model
-
-        for (TimesheetRow r : rows) {
-			float[] hrs = r.getHours(); 
+		rows.clear();
+		rows.addAll(sheet.getDetails());
+	
+		hoursGrid.clear();   
+		notesGrid.clear();  
+	
+		for (TimesheetRow r : rows) {
+			float[] hrs = r.getHours();
 			List<String> week = new ArrayList<>(7);
 			for (int d = TimesheetRow.SAT; d <= TimesheetRow.FRI; d++) {
-
-				week.add(hrs[d] == 0f ? "" : Float.toString(hrs[d]));
+				float v = (hrs != null && d < hrs.length) ? hrs[d] : 0f;
+				week.add(v == 0f ? "" : Float.toString(v));
 			}
 			hoursGrid.add(week);
 			notesGrid.add(r.getNotes());
 		}
-
-    }
+	}
 	
 	/**
      * Adds a blank row (project/work package) to the editable timesheet.
@@ -147,18 +165,30 @@ public class TimesheetEditBean implements Serializable {
      * @return navigation outcome "timesheetForm" (typically view mode)
      */
     public String save() {
-        for (int i = 0; i < rows.size(); i++) {
-            TimesheetRow r = rows.get(i);
-            List<String> week = hoursGrid.get(i);
-            float[] pack = new float[7];
-            for (int d = TimesheetRow.SAT; d <= TimesheetRow.FRI; d++) {
-                String s = week.get(d);
-                pack[d] = parseHour(s); 
-            }
-            r.setHours(pack);                 
-            r.setNotes(notesGrid.get(i));
-        }
-        return "timesheetForm";
+		
+		if (!validateTotalsFromGrid()) return null;
+
+		// copy grid back to model ...
+		for (int i = 0; i < rows.size(); i++) {
+			TimesheetRow r = rows.get(i);
+			List<String> week = hoursGrid.get(i);
+			float[] pack = new float[7];
+			for (int d = TimesheetRow.SAT; d <= TimesheetRow.FRI; d++) {
+				String s = week.get(d);
+				pack[d] = parseHour(s);
+			}
+			r.setHours(pack);
+			r.setNotes(notesGrid.get(i));
+		}
+	
+		if (tsId != null) {
+			timeSheetRepo.save(sheet, tsId); // update exactly this record
+		} else {
+			// creating a brand-new header (if you want “new timesheet” path here)
+			// timeSheetRepo.save(sheet); // your insert method; or create another repo method that inserts header+rows
+		}
+	
+		return "timesheetForm";
     }
 	
     /**
@@ -264,4 +294,57 @@ public class TimesheetEditBean implements Serializable {
     public String getEmployeeName() {
         return sheet!=null && sheet.getEmployee()!=null ? sheet.getEmployee().getName() : "";
     }
+	
+	
+	private boolean validateTotalsFromGrid() {
+		if (hoursGrid == null || hoursGrid.isEmpty()) return true;
+	
+		double[] dayTotals = new double[7];
+	
+		for (List<String> week : hoursGrid) {
+			if (week == null) continue;
+			for (int d = 0; d < 7; d++) {
+				String s = (d < week.size()) ? week.get(d) : null;
+				if (s == null || s.isBlank()) continue;
+				try {
+					double v = Double.parseDouble(s.trim());
+					if (v < 0) v = 0;
+					if (v > 24) v = 24;
+					v = Math.round(v * 10.0) / 10.0;
+					dayTotals[d] += v;
+				} catch (NumberFormatException ignored) {
+
+				}
+			}
+		}
+	
+		boolean valid = true;
+	
+		// Per-day cap
+		for (int d = 0; d < 7; d++) {
+			if (dayTotals[d] > 24.0 + 1e-6) {
+				valid = false;
+				jakarta.faces.context.FacesContext.getCurrentInstance().addMessage(
+				    null, new jakarta.faces.application.FacesMessage(
+				        jakarta.faces.application.FacesMessage.SEVERITY_ERROR,
+				        String.format("Total for %s exceeds 24 hours (%.1f h).", DAY_NAMES[d], dayTotals[d]), null));
+			}
+		}
+	
+		// Weekly cap (optional)
+		double weekTotal = Arrays.stream(dayTotals).sum();
+		if (weekTotal > 168.0 + 1e-6) {
+			valid = false;
+			jakarta.faces.context.FacesContext.getCurrentInstance().addMessage(
+			    null, new jakarta.faces.application.FacesMessage(
+			        jakarta.faces.application.FacesMessage.SEVERITY_ERROR,
+			        String.format("Weekly total exceeds 168 hours (%.1f h).", weekTotal), null));
+		}
+	
+		return valid;
+	}
+	
+	public Long getTsId() { return tsId; }
+	public void setTsId(Long tsId) { this.tsId = tsId; }
+
 }

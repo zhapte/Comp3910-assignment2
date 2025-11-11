@@ -1,7 +1,8 @@
 build:
-  uri: https://gitlab.infoteach.ca/bdlink/ch2-numberquiz.git
+  uri: https://gitlab.infoteach.ca/liul/assignment2.git
   mode: s2i
   ref: main
+  sourceSecret: gitlab-pulling
 deploy:
   replicas: 1
   env:

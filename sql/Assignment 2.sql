@@ -85,3 +85,5 @@ INSERT INTO credentials (employee_id, password_hash)
 SELECT e.employee_id, 'admin123'
 FROM employees e
 WHERE e.user_name = 'admin';
+
+ALTER TABLE timesheets DROP INDEX uq_ts_emp_week;
