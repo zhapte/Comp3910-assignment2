@@ -1,18 +1,31 @@
 package com.corejsf;
 
-import jakarta.enterprise.context.ApplicationScoped;
+
+
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
+import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
-import jakarta.annotation.PostConstruct;
 
 import java.io.Serializable;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.sql.SQLException;
+import javax.sql.DataSource;
+
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
-import javax.sql.DataSource;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
 import ca.bcit.infosys.timesheet.*;
 import ca.bcit.infosys.employee.*;
 
@@ -25,15 +38,18 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
     private CurrentUser currentUser;
 
     @Resource(lookup = "java:jboss/datasources/timesheetsDS")
-    private javax.sql.DataSource ds;
+    private DataSource ds;
 
-
+    /** Keep DB ids without changing your model classes. */
     private final Map<Timesheet, Long> timesheetIds = new WeakHashMap<>();
     private final Map<TimesheetRow, Long> rowIds = new WeakHashMap<>();
 
-    // ----------------------------------------------------
-    // Public API (unchanged signatures)
-    // ----------------------------------------------------
+    @PostConstruct
+    public void startup() {
+        ensureAdminExists();
+    }
+
+    // ---------------- TimesheetCollection API ----------------
 
     @Override
     public List<Timesheet> getTimesheets() {
@@ -87,27 +103,55 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
     @Override
     public Timesheet getCurrentTimesheet(final Employee e) {
         if (e == null) return null;
-        final String sql = """
-            SELECT t.timesheet_id, t.employee_id, t.end_date, t.overtime_deci, t.flextime_deci
-            FROM timesheets t
-            WHERE t.employee_id = ?
-            ORDER BY ABS(DATEDIFF(t.end_date, CURDATE())),
-                     CASE WHEN t.end_date < CURDATE() THEN 1 ELSE 0 END,
-                     t.end_date DESC
-            LIMIT 1
-        """;
-        try (Connection c = ds.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, requireEmployeeId(c, e));
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return null;
-                Timesheet ts = materializeTimesheet(rs, e);
-                loadRows(c, ts);
-                return ts;
-            }
-        } catch (SQLException ex) {
-            throw new RuntimeException("getCurrentTimesheet(Employee) failed", ex);
-        }
+
+		// 1) Try exact match for this week's Friday, prefer newest created
+		LocalDate thisFriday = LocalDate.now().with(java.time.DayOfWeek.FRIDAY);
+		final String sqlExact = """
+			SELECT t.timesheet_id, t.employee_id, t.end_date, t.overtime_deci, t.flextime_deci
+			FROM timesheets t
+			WHERE t.employee_id = ? AND t.end_date = ?
+			ORDER BY t.created_at DESC, t.timesheet_id DESC
+			LIMIT 1
+		""";
+	
+		try (Connection c = ds.getConnection();
+			PreparedStatement ps1 = c.prepareStatement(sqlExact)) {
+	
+			ps1.setLong(1, requireEmployeeId(c, e));
+			ps1.setDate(2, java.sql.Date.valueOf(thisFriday));
+	
+			try (ResultSet rs = ps1.executeQuery()) {
+				if (rs.next()) {
+					Timesheet ts = materializeTimesheet(rs, e);
+					loadRows(c, ts);
+					return ts; // Found a sheet for this Friday; return newest-created
+				}
+			}
+	
+			// 2) Fallback: closest to today (your original ordering)
+			final String sqlClosest = """
+				SELECT t.timesheet_id, t.employee_id, t.end_date, t.overtime_deci, t.flextime_deci
+				FROM timesheets t
+				WHERE t.employee_id = ?
+				ORDER BY ABS(DATEDIFF(t.end_date, CURDATE())),
+						CASE WHEN t.end_date < CURDATE() THEN 1 ELSE 0 END,
+						t.end_date DESC
+				LIMIT 1
+			""";
+	
+			try (PreparedStatement ps2 = c.prepareStatement(sqlClosest)) {
+				ps2.setLong(1, requireEmployeeId(c, e));
+				try (ResultSet rs2 = ps2.executeQuery()) {
+					if (!rs2.next()) return null;
+					Timesheet ts = materializeTimesheet(rs2, e);
+					loadRows(c, ts);
+					return ts;
+				}
+			}
+
+    } catch (SQLException ex) {
+        throw new RuntimeException("getCurrentTimesheet(Employee) failed", ex);
+    }
     }
 
     @Override
@@ -117,7 +161,6 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
 
         LocalDate endOfWeek = endOfWeekFriday(LocalDate.now());
 
-        // insert new shell timesheet (multiple per same week is allowed)
         final String insertTs = """
             INSERT INTO timesheets (employee_id, end_date, overtime_deci, flextime_deci)
             VALUES (?, ?, 0, 0)
@@ -127,7 +170,7 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
 
             long empId = requireEmployeeId(c, me);
             ps.setLong(1, empId);
-            ps.setDate(2, Date.valueOf(endOfWeek));
+            ps.setDate(2, java.sql.Date.valueOf(endOfWeek));
             ps.executeUpdate();
 
             long tsId;
@@ -136,7 +179,6 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
                 tsId = keys.getLong(1);
             }
 
-            // Build an in-memory object mirroring DB state (5 empty rows)
             Timesheet ts = new Timesheet(me, endOfWeek);
             ts.setOvertime(0);
             ts.setFlextime(0);
@@ -172,7 +214,7 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
             try {
                 Long existingId = timesheetIds.get(ts);
                 if (existingId == null) {
-                    // Insert new timesheet record
+                    // Insert new header
                     long empId = requireEmployeeId(c, ts.getEmployee());
                     final String ins = """
                         INSERT INTO timesheets (employee_id, end_date, overtime_deci, flextime_deci)
@@ -180,9 +222,10 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
                     """;
                     try (PreparedStatement ps = c.prepareStatement(ins, Statement.RETURN_GENERATED_KEYS)) {
                         ps.setLong(1, empId);
-                        ps.setDate(2, Date.valueOf(ts.getEndDate() != null ? ts.getEndDate() : endOfWeekFriday(LocalDate.now())));
-                        ps.setInt(3, safeDeci(ts.getOvertime()));
-                        ps.setInt(4, safeDeci(ts.getFlextime()));
+                        LocalDate end = (ts.getEndDate() != null) ? ts.getEndDate() : endOfWeekFriday(LocalDate.now());
+                        ps.setDate(2, java.sql.Date.valueOf(end));
+                        ps.setInt(3, 0); // no getters available on your model
+                        ps.setInt(4, 0);
                         ps.executeUpdate();
                         try (ResultSet keys = ps.getGeneratedKeys()) {
                             keys.next();
@@ -198,14 +241,14 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
                          WHERE timesheet_id = ?
                     """;
                     try (PreparedStatement ps = c.prepareStatement(upd)) {
-                        ps.setDate(1, Date.valueOf(ts.getEndDate()));
-                        ps.setInt(2, safeDeci(ts.getOvertime()));
-                        ps.setInt(3, safeDeci(ts.getFlextime()));
+                        ps.setDate(1, java.sql.Date.valueOf(ts.getEndDate()));
+                        ps.setInt(2, 0); // no getters available on your model
+                        ps.setInt(3, 0);
                         ps.setLong(4, existingId);
                         ps.executeUpdate();
                     }
 
-                    // Clear rows to resync (simpler & safe)
+                    // Clear rows to resync
                     try (PreparedStatement del = c.prepareStatement("DELETE FROM timesheet_rows WHERE timesheet_id = ?")) {
                         del.setLong(1, existingId);
                         del.executeUpdate();
@@ -230,28 +273,60 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         }
     }
 
-    public Timesheet getMyNewest() {
-        Employee me = currentUser.getEmployee();
-        if (me == null) return null;
+    /** Overload expected by TimesheetEditBean; ensures UPDATE when id is known. */
+    public void save(final Timesheet ts, final Long timesheetId) {
+        if (ts == null) return;
+        if (timesheetId != null) {
+            timesheetIds.put(ts, timesheetId);
+        }
+        save(ts);
+    }
+
+    /** Load a single timesheet by DB id (used by TimesheetEditBean). */
+    public Timesheet loadById(final Long timesheetId) {
+        if (timesheetId == null) return null;
         final String sql = """
             SELECT t.timesheet_id, t.employee_id, t.end_date, t.overtime_deci, t.flextime_deci
             FROM timesheets t
-            WHERE t.employee_id = ?
-            ORDER BY t.end_date DESC
+            WHERE t.timesheet_id = ?
             LIMIT 1
         """;
         try (Connection c = ds.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, requireEmployeeId(c, me));
+            ps.setLong(1, timesheetId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) return null;
-                Timesheet ts = materializeTimesheet(rs, me);
+                Timesheet ts = materializeTimesheet(rs);
                 loadRows(c, ts);
                 return ts;
             }
         } catch (SQLException ex) {
-            throw new RuntimeException("getMyNewest() failed", ex);
+            throw new RuntimeException("loadById failed for id=" + timesheetId, ex);
         }
+    }
+
+    public Timesheet getMyNewest() {
+        Employee me = currentUser.getEmployee();
+		if (me == null) return null;
+		final String sql = """
+			SELECT t.timesheet_id, t.employee_id, t.end_date, t.overtime_deci, t.flextime_deci
+			FROM timesheets t
+			WHERE t.employee_id = ?
+			ORDER BY t.created_at DESC, t.timesheet_id DESC
+			LIMIT 1
+		""";
+		try (Connection c = ds.getConnection();
+			PreparedStatement ps = c.prepareStatement(sql)) {
+			ps.setLong(1, requireEmployeeId(c, me));
+			try (ResultSet rs = ps.executeQuery()) {
+				if (!rs.next()) return null;
+				Timesheet ts = materializeTimesheet(rs, me);
+				loadRows(c, ts);
+				return ts;
+			}
+		} catch (SQLException ex) {
+			throw new RuntimeException("getMyNewest() failed", ex);
+		}
     }
 
     // ---------------- Helpers ----------------
@@ -295,7 +370,6 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
                     r.setProjectId(rs.getInt("project_id"));
                     r.setWorkPackageId(rs.getString("work_package_id"));
                     r.setHours(unpackHours(rs.getLong("packed_hours")));
-                    // (Optional) if your model has notes, set it.
                     ts.getDetails().add(r);
                     rowIds.put(r, rs.getLong("row_id"));
                 }
@@ -327,7 +401,6 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
     }
 
     private long requireEmployeeId(Connection c, Employee e) throws SQLException {
-        // if emp_number is your stable bridge:
         final String find = "SELECT employee_id FROM employees WHERE emp_number = ?";
         try (PreparedStatement ps = c.prepareStatement(find)) {
             ps.setInt(1, e.getEmpNumber());
@@ -335,7 +408,6 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
                 if (rs.next()) return rs.getLong(1);
             }
         }
-        // If not found, create it on the fly
         final String ins = "INSERT INTO employees (name, emp_number, user_name, role) VALUES (?, ?, ?, ?)";
         try (PreparedStatement ps = c.prepareStatement(ins, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, nvl(e.getName(), "User " + e.getEmpNumber()));
@@ -367,7 +439,6 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         } catch (SQLException ex) {
             throw new RuntimeException("loadEmployeeById failed", ex);
         }
-        // Fallback minimal employee
         Employee e = new Employee();
         e.setName("Unknown");
         e.setEmpNumber(-1);
@@ -382,7 +453,6 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
              ResultSet rs = ps.executeQuery()) {
             rs.next();
             if (rs.getLong(1) == 0) {
-                // Seed minimal admin
                 final String ins = "INSERT INTO employees (name, emp_number, user_name, role) VALUES ('System Admin', 0, 'admin', 'ADMIN')";
                 try (PreparedStatement insPs = c.prepareStatement(ins)) {
                     insPs.executeUpdate();
@@ -394,23 +464,18 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
     }
 
     private static LocalDate endOfWeekFriday(LocalDate ref) {
-        LocalDate fri = ref.with(DayOfWeek.FRIDAY);
-        // java.time’s with(FRIDAY) returns Friday in the *same week*
-        return fri;
+        return ref.with(DayOfWeek.FRIDAY);
     }
-
-    private static int safeDeci(Integer v) { return v == null ? 0 : v; }
 
     private static float[] safeHours(TimesheetRow r) {
         float[] h = r.getHours();
         if (h == null || h.length != 7) return new float[]{0,0,0,0,0,0,0};
         return h;
-        }
+    }
 
     private static String nvl(String s) { return s == null ? "" : s; }
     private static String nvl(String s, String def) { return s == null ? def : s; }
 
-    /** Pack 7 days of hours into BIGINT as tenths (Mon..Sun), 1 byte per day. */
     private static long packHours(float[] hours) {
         long v = 0L;
         for (int i = 0; i < 7; i++) {
@@ -422,7 +487,6 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         return v;
     }
 
-    /** Unpack BIGINT (Mon..Sun), 1 byte per day, as hours with one decimal. */
     private static float[] unpackHours(long packed) {
         float[] out = new float[7];
         for (int i = 0; i < 7; i++) {

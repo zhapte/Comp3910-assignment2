@@ -91,51 +91,39 @@ public class TimesheetEditBean implements Serializable {
      */
 	@PostConstruct
     public void init() {
-		if (conversation.isTransient()) {
-			conversation.begin();
-			conversation.setTimeout(20 * 60 * 1000L);
-		}
-		if (sheet != null) return;
-	
-		if (tsId != null) {
-			sheet = timeSheetRepo.loadById(tsId);  
-			if (sheet == null) {
-				throw new IllegalStateException("Timesheet not found for id=" + tsId);
-			}
-		} else {
-			sheet = currentUser.getSelectedTimesheet();
-			if (sheet == null) {
-				timeSheetRepo.addTimesheet();
-				sheet = timeSheetRepo.getMyNewest();
-			}
-		}
-	
-
+        if (conversation.isTransient()) {
+            conversation.begin();
+            conversation.setTimeout(20 * 60 * 1000L);
+        }
+        if (sheet != null) return; 
+		// postback guard
+        sheet = currentUser.getSelectedTimesheet();
+        if (sheet == null) {
+            timeSheetRepo.addTimesheet();
+            sheet = timeSheetRepo.getMyNewest();
+        }
 		currentUser.setSelectedTimesheet(sheet);
-	
+        while (sheet.getDetails().size() < 5) {
+            sheet.addRow();
+        }
 
-		while (sheet.getDetails().size() < 5) {
-			sheet.addRow();
-		}
-	
+        rows.clear();
+        rows.addAll(sheet.getDetails());
 
-		rows.clear();
-		rows.addAll(sheet.getDetails());
-	
-		hoursGrid.clear();   
-		notesGrid.clear();  
-	
-		for (TimesheetRow r : rows) {
-			float[] hrs = r.getHours();
+        // Build editable grids from model
+
+        for (TimesheetRow r : rows) {
+			float[] hrs = r.getHours(); 
 			List<String> week = new ArrayList<>(7);
 			for (int d = TimesheetRow.SAT; d <= TimesheetRow.FRI; d++) {
-				float v = (hrs != null && d < hrs.length) ? hrs[d] : 0f;
-				week.add(v == 0f ? "" : Float.toString(v));
+
+				week.add(hrs[d] == 0f ? "" : Float.toString(hrs[d]));
 			}
 			hoursGrid.add(week);
 			notesGrid.add(r.getNotes());
 		}
-	}
+
+    }
 	
 	/**
      * Adds a blank row (project/work package) to the editable timesheet.
@@ -166,29 +154,25 @@ public class TimesheetEditBean implements Serializable {
      */
     public String save() {
 		
-		if (!validateTotalsFromGrid()) return null;
-
-		// copy grid back to model ...
-		for (int i = 0; i < rows.size(); i++) {
-			TimesheetRow r = rows.get(i);
-			List<String> week = hoursGrid.get(i);
-			float[] pack = new float[7];
-			for (int d = TimesheetRow.SAT; d <= TimesheetRow.FRI; d++) {
-				String s = week.get(d);
-				pack[d] = parseHour(s);
-			}
-			r.setHours(pack);
-			r.setNotes(notesGrid.get(i));
+		if (!validateTotalsFromGrid()) {
+			return null; 
 		}
-	
-		if (tsId != null) {
-			timeSheetRepo.save(sheet, tsId); // update exactly this record
-		} else {
-			// creating a brand-new header (if you want “new timesheet” path here)
-			// timeSheetRepo.save(sheet); // your insert method; or create another repo method that inserts header+rows
-		}
-	
-		return "timesheetForm";
+		
+        for (int i = 0; i < rows.size(); i++) {
+            TimesheetRow r = rows.get(i);
+            List<String> week = hoursGrid.get(i);
+            float[] pack = new float[7];
+            for (int d = TimesheetRow.SAT; d <= TimesheetRow.FRI; d++) {
+                String s = week.get(d);
+                pack[d] = parseHour(s); 
+            }
+            r.setHours(pack);                 
+            r.setNotes(notesGrid.get(i));
+        }
+		
+		timeSheetRepo.save(sheet);
+		
+        return "timesheetForm";
     }
 	
     /**
