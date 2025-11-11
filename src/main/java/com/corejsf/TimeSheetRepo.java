@@ -29,7 +29,22 @@ import java.util.WeakHashMap;
 import ca.bcit.infosys.timesheet.*;
 import ca.bcit.infosys.employee.*;
 
-
+/**
+* Repository / DAO for {@link Timesheet} data.
+* <p>
+* Responsibilities:
+* <ul>
+* <li>Materialize {@code Timesheet} and {@code TimesheetRow} objects from the database</li>
+* <li>Persist changes (insert/update) to the <code>timesheets</code> and <code>timesheet_rows</code> tables</li>
+* <li>Provide convenience lookups for the current user</li>
+* <li>Seed an admin employee record if the employee table is empty</li>
+* </ul>
+*
+* <p><strong>Notes on model constraints</strong>:
+* The provided model classes do not expose getters for overtime/flextime in hours.
+* This implementation stores/reads the raw decihour values from the DB but sets zeros
+* when saving (see comments in {@link #save(Timesheet)}). Adjust here when the model API changes.</p>
+*/
 @Named("timeSheetRepo")
 @ApplicationScoped
 public class TimeSheetRepo implements TimesheetCollection, Serializable {
@@ -51,6 +66,12 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
 
     // ---------------- TimesheetCollection API ----------------
 
+    /**
+    * Fetch all timesheets for all employees, newest end date last for each employee.
+    *
+    * @return list of fully populated {@link Timesheet}s (header + rows)
+    * @throws RuntimeException on SQL errors
+    */
     @Override
     public List<Timesheet> getTimesheets() {
         final String sql = """
@@ -74,6 +95,12 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         return result;
     }
 
+    /**
+    * Fetch all timesheets for a specific employee.
+    *
+    * @param e employee to filter by (nullable)
+    * @return list of fully populated timesheets, newest end date first
+    */
     @Override
     public List<Timesheet> getTimesheets(final Employee e) {
         if (e == null) return Collections.emptyList();
@@ -100,6 +127,20 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         return result;
     }
 
+    /**
+    * Load the current timesheet for an employee.
+    * <p>
+    * Strategy:
+    * <ol>
+    * <li>Try an exact match for <em>this week's Friday</em> (based on server clock),
+    * picking the most recently created if duplicates exist.</li>
+    * <li>Fallback to the sheet whose end_date is closest to today (ties: prefer future,
+    * then later end_date).</li>
+    * </ol>
+    *
+    * @param e target employee (nullable)
+    * @return the best-matching current {@link Timesheet}, or {@code null}
+    */
     @Override
     public Timesheet getCurrentTimesheet(final Employee e) {
         if (e == null) return null;
@@ -154,6 +195,12 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
     }
     }
 
+    /**
+    * Create a new, empty timesheet for the current user covering this week (ending Friday).
+    * Also seeds 5 empty rows so the UI has something to render.
+    *
+    * @return navigation/status string; "created" on success, or "no-user" if unauthenticated
+    */
     @Override
     public String addTimesheet() {
         Employee me = currentUser.getEmployee();
@@ -199,14 +246,28 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         }
     }
 
+    /** @return the current user's best-matching current sheet (convenience). */
     public Timesheet getMyCurrentTimesheet() {
         return getCurrentTimesheet(currentUser.getEmployee());
     }
 
+    /** @return all timesheets for the current user (convenience). */
     public List<Timesheet> getMyTimesheets() {
         return getTimesheets(currentUser.getEmployee());
     }
 
+    /**
+    * Persist the provided {@link Timesheet} and its rows.
+    * <p>
+    * If the timesheet has no known DB id, a header row is inserted and the generated
+    * key is tracked in {@link #timesheetIds}. Otherwise the header is updated. Rows
+    * are re-synchronized by deleting and re-inserting in line order.
+    *
+    * <p><strong>Overtime/Flextime:</strong> The model lacks getters for hours;
+    * we currently set DB values to 0. If/when getters are added, wire them here.</p>
+    *
+    * @param ts timesheet to save (nullable is a no-op)
+    */
     public void save(final Timesheet ts) {
         if (ts == null) return;
         try (Connection c = ds.getConnection()) {
@@ -305,6 +366,12 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         }
     }
 
+    
+    /**
+    * Fetch the newest-created timesheet for the current user.
+    *
+    * @return most recently created {@link Timesheet}, or {@code null}
+    */
     public Timesheet getMyNewest() {
         Employee me = currentUser.getEmployee();
 		if (me == null) return null;
@@ -331,6 +398,10 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
 
     // ---------------- Helpers ----------------
 
+    /**
+    * Build a {@link Timesheet} from the current row of the {@link ResultSet}.
+    * Also caches the <code>timesheet_id</code> mapping for later updates.
+    */
     private Timesheet materializeTimesheet(ResultSet rs) throws SQLException {
         long empId = rs.getLong("employee_id");
         LocalDate end = rs.getDate("end_date").toLocalDate();
@@ -342,6 +413,7 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         return ts;
     }
 
+    /** As above, but reuse a known {@link Employee} to avoid an extra DB lookup. */
     private Timesheet materializeTimesheet(ResultSet rs, Employee knownEmployee) throws SQLException {
         LocalDate end = rs.getDate("end_date").toLocalDate();
         Timesheet ts = new Timesheet(knownEmployee, end);
@@ -351,6 +423,10 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         return ts;
     }
 
+    
+    /**
+    * Load all rows for a given timesheet and attach them to its details list.
+    */
     private void loadRows(Connection c, Timesheet ts) throws SQLException {
         Long tsId = timesheetIds.get(ts);
         if (tsId == null) return;
@@ -377,6 +453,14 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         }
     }
 
+    /**
+    * Insert one detail row for a timesheet.
+    *
+    * @param c open connection (transactional)
+    * @param ts parent timesheet (must already have an id)
+    * @param lineNo 1-based order number
+    * @param r row to persist
+    */
     private void insertRow(Connection c, Timesheet ts, int lineNo, TimesheetRow r) throws SQLException {
         Long tsId = timesheetIds.get(ts);
 		if (tsId == null) throw new IllegalStateException("Timesheet id unknown during row insert");
@@ -401,6 +485,11 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
 		}
     }
 
+    /**
+    * Find an employee id by <code>emp_number</code>, inserting a new record if missing.
+    *
+    * @return the existing or newly generated <code>employee_id</code>
+    */
     private long requireEmployeeId(Connection c, Employee e) throws SQLException {
         final String find = "SELECT employee_id FROM employees WHERE emp_number = ?";
         try (PreparedStatement ps = c.prepareStatement(find)) {
@@ -423,6 +512,10 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         }
     }
 
+    /**
+    * Translate a DB employee id to a minimal {@link Employee} instance.
+    * Creates a generic placeholder if the id cannot be resolved (should be rare).
+    */
     private Employee loadEmployeeById(long employeeId) {
         final String sql = "SELECT name, emp_number, user_name, role FROM employees WHERE employee_id = ?";
         try (Connection c = ds.getConnection();
@@ -447,6 +540,10 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         return e;
     }
 
+    /**
+    * Ensure there is at least one admin/seed row in <code>employees</code>.
+    * If the table is missing (schema not ready), failures are ignored.
+    */
     private void ensureAdminExists() {
         final String countSql = "SELECT COUNT(*) FROM employees";
         try (Connection c = ds.getConnection();
@@ -464,19 +561,27 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         }
     }
 
+    /** @return the Friday of the week containing {@code ref}. */
     private static LocalDate endOfWeekFriday(LocalDate ref) {
         return ref.with(DayOfWeek.FRIDAY);
     }
 
+    /** Defensive copy for hours array: must be length 7 (Sat..Fri). */
     private static float[] safeHours(TimesheetRow r) {
         float[] h = r.getHours();
         if (h == null || h.length != 7) return new float[]{0,0,0,0,0,0,0};
         return h;
     }
 
+    /** Null-safe helpers. */
     private static String nvl(String s) { return s == null ? "" : s; }
     private static String nvl(String s, String def) { return s == null ? def : s; }
 
+    
+    /**
+    * Pack seven day-hour values (in hours, fractional to 0.1h) into a 56-bit long.
+    * Each day is stored as an unsigned byte of <em>tenths</em> of an hour.
+    */
     private static long packHours(float[] hours) {
         long v = 0L;
         for (int i = 0; i < 7; i++) {
@@ -488,6 +593,7 @@ public class TimeSheetRepo implements TimesheetCollection, Serializable {
         return v;
     }
 
+    /** Reverse of {@link #packHours(float[])}. */
     private static float[] unpackHours(long packed) {
         float[] out = new float[7];
         for (int i = 0; i < 7; i++) {

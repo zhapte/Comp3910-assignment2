@@ -17,16 +17,39 @@ import java.sql.*;
 import javax.sql.DataSource;
 
 
+/**
+* Repository for managing all Employee and Credential operations.
+* <p>
+* Responsibilities:
+* <ul>
+* <li>Load employees from the database</li>
+* <li>Create new employees and credentials</li>
+* <li>Delete employees</li>
+* <li>Authenticate user credentials</li>
+* <li>Manage password updates</li>
+* </ul>
+*
+* <p>This class interacts with two DB tables:
+* <ul>
+* <li><b>employees</b> — name, emp_number, user_name, role</li>
+* <li><b>credentials</b> — employee_id, password_hash</li>
+* </ul>
+*/
 @Named("employeeRepo")
 @ApplicationScoped
 public class EmployeeRepo implements EmployeeList{
     
+    /** Injected datasource for DB access (WildFly + OKD). */
     @Resource(lookup = "java:jboss/datasources/timesheetsDS")
     private DataSource ds;
 
+    /** Provides access to the logged-in user. */
     @Inject
     private CurrentUser currentUser;
 	
+    /**
+    * Loads all employees ordered by their employee number.
+    */
 	@Override
     public List<Employee> getEmployees() {
         String sql = """
@@ -44,6 +67,10 @@ public class EmployeeRepo implements EmployeeList{
         return list;
     }
 	
+	/**
+	* Load a single employee from database by username.
+	* Case-insensitive lookup.
+	*/
 	@Override
     public Employee getEmployee(String userName) {
         String sql = """
@@ -62,6 +89,10 @@ public class EmployeeRepo implements EmployeeList{
         return null;
     }
 	
+	/**
+	* Creates a new employee and inserts default credentials.
+	* Validates that username and emp_number are unique.
+	*/
 	@Override
     public void addEmployee(Employee emp) {
         // Enforce unique username & emp_number (if provided)
@@ -114,6 +145,10 @@ public class EmployeeRepo implements EmployeeList{
         }
     }
 
+	/**
+	* Deletes an employee using their emp_number.
+	* Protects the admin account from deletion.
+	*/
 	@Override
     public void deleteEmployee(Employee emp) {
         if (emp == null) return;
@@ -131,6 +166,10 @@ public class EmployeeRepo implements EmployeeList{
         }
     }
 	
+	/**
+	* Load all username/password pairs used for authentication.
+	* Mainly used by login logic.
+	*/
 	public Map<String, String> getLoginCombos() {
         String sql = """
             SELECT e.user_name, c.password_hash
@@ -150,6 +189,9 @@ public class EmployeeRepo implements EmployeeList{
         return map;
     }
 
+	/**
+	* Validate username/password against stored credentials.
+	*/
     public boolean verifyUser(Credentials credential) {
         if (credential == null || credential.getUserName() == null) return false;
         String sql = """
@@ -171,6 +213,10 @@ public class EmployeeRepo implements EmployeeList{
         }
     }
 
+    /**
+    * Update a user's password.
+    * Also stamps last_changed timestamp.
+    */
     public void changePassword(String userName, String newPassword) {
         String sql = """
             UPDATE credentials c
@@ -188,16 +234,21 @@ public class EmployeeRepo implements EmployeeList{
         }
     }
 
+    /** Change password for the currently logged-in user. */
     public void changeMyPassword(String newPassword) {
         if (currentUser == null || currentUser.getEmployee() == null)
             throw new IllegalStateException("No current user.");
         changePassword(currentUser.getEmployee().getUserName(), newPassword);
     }
 
+    /**
+     * Returns the currently logged-in employee, or null if no session exists.
+     */
     public Employee getCurrentEmployee() {
         return (currentUser == null) ? null : currentUser.getEmployee();
     }
 
+    /** Return the first ADMIN user found. */
     public Employee getAdministrator() {
         String sql = """
             SELECT employee_id, name, emp_number, user_name, role
@@ -216,6 +267,9 @@ public class EmployeeRepo implements EmployeeList{
         return null;
     }
 
+    /**
+    * Logs out a user and returns navigation page name.
+    */
     public String logout(Employee employee) {
         if (employee == null) return "login";
         if (currentUser != null
@@ -227,6 +281,9 @@ public class EmployeeRepo implements EmployeeList{
         return "login";
     }
 
+    /**
+    * Compute next available employee number (MAX+1).
+    */
     public int nextEmpNumber() {
         String sql = "SELECT COALESCE(MAX(emp_number), 0) + 1 FROM employees";
         try (Connection c = ds.getConnection();
@@ -241,6 +298,7 @@ public class EmployeeRepo implements EmployeeList{
 
     // ---------- Private helpers ----------
 
+    /** Check if username already exists. */
     private boolean userExists(String userName) {
         String sql = "SELECT 1 FROM employees WHERE LOWER(user_name)=LOWER(?)";
         try (Connection c = ds.getConnection();
@@ -252,6 +310,7 @@ public class EmployeeRepo implements EmployeeList{
         }
     }
 
+    /** Check if an employee number is already used. */
     private boolean empNumberExists(int empNumber) {
         String sql = "SELECT 1 FROM employees WHERE emp_number=?";
         try (Connection c = ds.getConnection();
@@ -263,6 +322,9 @@ public class EmployeeRepo implements EmployeeList{
         }
     }
 
+    /**
+    * Maps a ResultSet row into an Employee or Admin instance.
+    */
     private Employee mapEmployee(ResultSet rs) throws SQLException {
         String role = rs.getString("role");
         Employee e = "ADMIN".equalsIgnoreCase(role) ? new Admin() : new User();

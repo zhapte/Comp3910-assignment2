@@ -287,7 +287,10 @@ public class TimesheetEditBean implements Serializable {
         return sheet!=null && sheet.getEmployee()!=null ? sheet.getEmployee().getName() : "";
     }
 	
-	
+    /**
+    * Validate per-day and weekly totals from the editable grid.
+    * Emits {@link FacesMessage}s on failure.
+    */
 	private boolean validateTotalsFromGrid() {
 		if (hoursGrid == null || hoursGrid.isEmpty()) return true;
 	
@@ -336,6 +339,11 @@ public class TimesheetEditBean implements Serializable {
 		return valid;
 	}
 	
+	/**
+	* Ensure each (projectId, workPackageId) pair is unique across rows.
+	* Ignores rows that are entirely empty (projectId = 0 and blank WP).
+	* Emits {@link FacesMessage}s describing the duplicates.
+	*/
 	private boolean validateUniqueProjectWP() {
 		boolean ok = true;
 		Map<String, Integer> firstSeenAtRow = new LinkedHashMap<>(); 
@@ -370,7 +378,13 @@ public class TimesheetEditBean implements Serializable {
 		return ok;
 }
 	
+	/** @return the ID of the timesheet being edited (may be null). */
 	public Long getTsId() { return tsId; }
+	
+	/**
+	 * Sets the ID of the timesheet to load/edit.
+	 * Typically populated via navigation parameters.
+	 */
 	public void setTsId(Long tsId) { this.tsId = tsId; }
 
 }
