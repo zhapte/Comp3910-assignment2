@@ -2,7 +2,7 @@ build:
   uri: https://gitlab.infoteach.ca/liul/assignment2.git
   mode: s2i
   ref: main
-  sourceSecret: gitlab-pulling
+  sourceSecret: gitlabpulling
 deploy:
   replicas: 1
   env:
